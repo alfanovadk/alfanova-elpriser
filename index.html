@@ -129,13 +129,13 @@
 "use strict";
 import {
   DSO_TARIFFS, parseDK, totalOf, tierOf, loHi, bestWindow, seriesForDay, tierClass, componentsOf
-} from './pricing.js?v=4';
-import { getAccessToken, getMeteringPoints, getTimeSeries, parseTimeSeries, parseBuckets } from './eloverblik.js?v=4';
-import { verifyClaim, pointsFor, smartScore, badgeUpdates } from './gamify.js?v=4';
+} from './pricing.js?v=5';
+import { getAccessToken, getMeteringPoints, getTimeSeries, parseTimeSeries, parseBuckets } from './eloverblik.js?v=5';
+import { verifyClaim, pointsFor, smartScore, badgeUpdates } from './gamify.js?v=5';
 import {
-  dayProfile, weekdayProfile, periodTotals, pctChange, toCSV, co2Footprint, avgIntensity
-} from './forbrug-analyse.js?v=4';
-import { fetchCO2 } from './co2.js?v=4';
+  dayProfile, weekdayProfile, periodTotals, pctChange, toCSV, co2Footprint, avgIntensity, co2FootprintDaily
+} from './forbrug-analyse.js?v=5';
+import { fetchCO2, dailyAvgCO2 } from './co2.js?v=5';
 
 /* ===================== PRIS-MOTOR (rigtige data) ===================== */
 const DAYS=['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'];
@@ -225,7 +225,8 @@ const app={
     customTariff:{ winter:{lav:11,hoej:33,spids:99}, summer:{lav:11,hoej:17,spids:43} },
     eloverblik:{ refreshToken:'', meteringPointId:'', accessToken:'', accessTokenExp:0 },
     wizardStep:0, wizardMsg:'', meteringPoints:[],
-    analyse:{ periodeType:'maaned', fromKey:null, toKey:null }, analyseMsg:null, analyseLoading:false },
+    analyse:{ periodeType:'maaned', fromKey:null, toKey:null }, analyseMsg:null, analyseLoading:false,
+    toast:'' },
   raw:[], loading:true, error:null
 };
 function currentTariff(){
@@ -246,6 +247,7 @@ function loadState(){
   app.state.analyse={ periodeType:'maaned', fromKey:null, toKey:null };
   app.state.analyseMsg=null;
   app.state.analyseLoading=false;
+  app.state.toast='';
 }
 function saveState(){
   const {theme,region,markup,bilH,opvaskH,vaskH,dso,customTariff,eloverblik}=app.state;
@@ -322,6 +324,10 @@ function saveGamify(g){ try{ localStorage.setItem('elpriser_gamify', JSON.string
 // ændrer sig aldrig) — merges aldrig destruktivt, ryddes aldrig. Pr. prisområde-nøgle.
 function loadCO2(){ try{ return JSON.parse(localStorage.getItem('elpriser_co2')||'{}'); }catch(e){ return {}; } }
 function saveCO2(o){ try{ localStorage.setItem('elpriser_co2', JSON.stringify(o)); }catch(e){} }
+// Dag-snit-CO₂ pr. prisområde+dag { "${region}|${dayKey}": gPerKwh }. Bruges til dag-niveau-
+// approksimationen for Måned/Kvartal/År (kun dags-forbrug tilgængeligt). Merges, ryddes aldrig.
+function loadCO2Daily(){ try{ return JSON.parse(localStorage.getItem('elpriser_co2_daily')||'{}'); }catch(e){ return {}; } }
+function saveCO2Daily(o){ try{ localStorage.setItem('elpriser_co2_daily', JSON.stringify(o)); }catch(e){} }
 
 /* ===================== STALE-GUARD (tålmodig baggrunds-hentning) ===================== */
 // DataHub er ofte transient nede og data er kun 1-2 dage forsinket — derfor poller vi sjældent.
@@ -553,6 +559,16 @@ async function loadAnalyseData(force){
 function co2Key(region, dayKey){ return `${region}|${dayKey}`; }
 // CO₂-intensitet for én dag fra cache → number[24] eller null. Bundet til prisområde.
 function cachedCO2Day(region, dayKey){ const c=loadCO2(); return c[co2Key(region, dayKey)]||null; }
+// Dag-snit-CO₂ (g/kWh) for én dag fra cache → number eller null. Bundet til prisområde.
+// Falder tilbage til at udlede snittet fra det cachede time-array hvis dag-snittet mangler.
+function cachedCO2DailyAvg(region, dayKey){
+  const d=loadCO2Daily(); const v=d[co2Key(region, dayKey)];
+  if(v!=null) return v;
+  const hours=cachedCO2Day(region, dayKey);
+  if(!hours) return null;
+  const list=hours.filter(x=>+x>0);
+  return list.length ? list.reduce((a,b)=>a+(+b||0),0)/list.length : 0;
+}
 
 // Hent CO₂-intensitet for de dage i [from,to] vi mangler i cachen. Kun fortid/i dag (EDS
 // har ikke fremtid). Non-blocking: behold cache ved fejl. Polite: kun manglende dage hentes.
@@ -575,6 +591,10 @@ async function loadCO2ForPeriod(range){
     const c=loadCO2();
     for(const dk of Object.keys(parsed)){ c[co2Key(region, dk)]=parsed[dk]; }
     saveCO2(c);
+    // Cache også dag-snit (g/kWh) til dag-niveau-approksimationen (Måned/Kvartal/År).
+    const daily=loadCO2Daily(), avgByDay=dailyAvgCO2(parsed);
+    for(const dk of Object.keys(avgByDay)){ daily[co2Key(region, dk)]=avgByDay[dk]; }
+    saveCO2Daily(daily);
     render();
   }catch(e){ /* non-blocking: behold cache, EDS-fejl er sjælden og transient */ }
 }
@@ -663,6 +683,21 @@ function claimsHTML(th){
     <span style="width:18px;text-align:center;">${fa(APP_ICON[c.apparat]||'bolt',th.text)}</span><span style="flex:1;color:${th.text};">kl ${pad(c.startHour)}</span>${chip(c.status)}</div>`).join('');
   return `<div style="background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:12px 14px;margin-top:12px;">
     <div style="font-weight:800;font-size:12px;letter-spacing:.06em;color:${th.muted};margin-bottom:6px;">DINE MARKERINGER I DAG</div>${rows}</div>`;
+}
+
+// Er apparatet allerede sat i gang i DENNE time i dag? (samme id-skema som logClaim).
+function isClaimedNow(apparatKey){
+  const now=new Date();
+  return loadClaims().some(c=>c.apparat===apparatKey && c.dato===keyOf(now) && c.startHour===now.getHours());
+}
+// Stateful «Kør nu»-knap → bekræftet pille «✓ Sat i gang» når en markering findes (tema-styling
+// via radius). Toggler markeringen via logClaim ved tryk, så knappen giver øjeblikkelig feedback.
+function claimBtn(th, apKey, radius){
+  const on=isClaimedNow(apKey);
+  const style=on
+    ? `border:1px solid ${th.accent};background:${th.accentSoft};color:${th.accent};`
+    : `border:1px solid ${th.border};background:${th.surface};color:${th.accent};`;
+  return `<button onclick="logClaim('${apKey}')" style="${style}font:inherit;font-weight:700;font-size:11px;border-radius:${radius};padding:5px 11px;cursor:pointer;white-space:nowrap;">${on?'✓ Sat i gang':'Kør nu'}</button>`;
 }
 
 function computeView(){
@@ -840,7 +875,7 @@ function viewSoft(V){
     <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #e3ede8;border-radius:14px;padding:9px 12px;">
       <span style="font-size:19px;width:22px;text-align:center;">${fa(APP_ICON[ap.key],'#11352b')}</span>
       <div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13.5px;color:#11352b;">${ap.name}</div><div style="font-size:11.5px;color:#7c8a83;">${ap.when}</div></div>
-      <button onclick="logClaim('${ap.key}')" style="border:1px solid ${th.border};background:${th.surface};color:${th.accent};font:inherit;font-weight:700;font-size:11px;border-radius:99px;padding:5px 11px;cursor:pointer;">Kør nu</button>
+      ${claimBtn(th,ap.key,'99px')}
       <div style="text-align:right;"><div style="font-weight:800;font-size:13px;color:#1c7a4d;background:#E3F7EC;padding:3px 9px;border-radius:99px;">${ap.win}</div></div>
     </div>`).join('');
   return `<div class="pane">
@@ -870,7 +905,7 @@ function viewBold(V){
     <div style="display:flex;align-items:center;gap:11px;background:#131A22;border:1px solid #222e38;border-radius:12px;padding:9px 12px;">
       <span style="font-size:19px;width:22px;text-align:center;">${fa(APP_ICON[ap.key],'#C6FF3D')}</span>
       <div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13.5px;color:#EAF2E9;">${ap.name}</div><div style="font-size:11.5px;color:#6b7785;">${ap.when}</div></div>
-      <button onclick="logClaim('${ap.key}')" style="border:1px solid ${th.border};background:${th.surface};color:${th.accent};font:inherit;font-weight:700;font-size:11px;border-radius:8px;padding:5px 10px;cursor:pointer;">Kør nu</button>
+      ${claimBtn(th,ap.key,'8px')}
       <div style="text-align:right;"><div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;color:#C6FF3D;">${ap.win}</div></div>
     </div>`).join('');
   const cheapTag=V.nowTier===0?`↓ til ${V.cheapEnd}`:`billigst ${V.cheapUntil}`;
@@ -903,7 +938,7 @@ function viewPlay(V){
     <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1.5px solid #efe4f8;border-radius:14px;padding:8px 12px;">
       <span style="font-size:20px;width:23px;text-align:center;">${fa(APP_ICON[ap.key],'#6C4BD8')}</span>
       <div style="flex:1;min-width:0;"><div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:13.5px;color:#2a2140;">${ap.name}</div><div style="font-size:11.5px;color:#948aa8;">${ap.when}</div></div>
-      <button onclick="logClaim('${ap.key}')" style="border:1px solid ${th.border};background:${th.surface};color:${th.accent};font:inherit;font-weight:700;font-size:11px;border-radius:99px;padding:5px 11px;cursor:pointer;">Kør nu</button>
+      ${claimBtn(th,ap.key,'99px')}
       <div style="text-align:right;"><div style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:13px;color:#fff;background:#2BC48A;padding:4px 9px;border-radius:99px;">${ap.win}</div></div>
     </div>`).join('');
   return `<div class="pane">
@@ -1135,42 +1170,90 @@ function statCard(th,label,value,sub){
     ${sub?`<div style="font-size:11px;color:${th.muted};margin-top:2px;">${sub}</div>`:''}</div>`;
 }
 
-// Klimaaftryk-kort for den valgte periode. Summerer kg CO₂ over de dage hvor vi har BÅDE
-// time-forbrug (elpriser_consumption) OG time-CO₂ (elpriser_co2) cachet. Viser intet tal hvis
-// ingen dage matcher (ingen fabrikation) — i stedet en kompakt "henter"-linje.
+// Måneds-snit-CO₂ (g/kWh) fra cachede dag-snit i måneden → number eller null hvis ingen dage cachet.
+function monthAvgCO2(region, year, monthIdx){
+  let sum=0, n=0;
+  const days=new Date(year, monthIdx+1, 0).getDate();
+  for(let day=1; day<=days; day++){
+    const avg=cachedCO2DailyAvg(region, `${year}-${monthIdx+1}-${day}`);
+    if(avg!=null && avg>0){ sum+=avg; n++; }
+  }
+  return n ? sum/n : null;
+}
+
+// Klimaaftryk-kort for den valgte periode. Beregningsvej afhænger af forbrugets opløsning:
+//  • Dag/Uge (Hour-agg): PRÆCIS — Σ time-forbrug × time-CO₂ pr. dag (elpriser_consumption × elpriser_co2).
+//  • Måned/Uge-custom (Day-agg): ESTIMERET — Σ dags-forbrug × dag-snit-CO₂ (elpriser_consumption_daily
+//    × elpriser_co2_daily) via co2FootprintDaily.
+//  • Kvartal/År (Month-agg): ESTIMERET — Σ måneds-forbrug × måneds-snit-CO₂ (forbruget findes kun pr. måned dér).
+// Alle veje tæller kun enheder hvor BÅDE forbrug OG CO₂ findes (ingen fabrikerede tal). Mangler alt →
+// kompakt "henter"-linje.
 function co2Card(th, type, range){
   const region=app.state.region;
-  const cons=loadConsumption();
-  let totKg=0, totKwh=0, totG=0, daysWithData=0, daysInRange=0;
   const today=startOfDay(new Date());
-  for(let d=startOfDay(new Date(range.from)); d<=range.to && d<=today; d=addDays(d,1)){
-    daysInRange++;
-    const dk=keyOf(d);
-    const kwh=cons[dk], co2=cachedCO2Day(region, dk);
-    if(!kwh || !co2) continue;
-    daysWithData++;
-    totKg+=co2Footprint(kwh, co2);
-    for(let h=0;h<24;h++){ const k=+kwh[h]||0; totKwh+=k; totG+=k*(+co2[h]||0); }
+  const agg=aggForType(type);
+  const precise = agg==='Hour';
+  let totKg=0, totKwh=0, totG=0, withData=0, inRange=0, unit='dage';
+
+  if(precise){
+    // PRÆCIS: time-forbrug × time-CO₂.
+    const cons=loadConsumption();
+    for(let d=startOfDay(new Date(range.from)); d<=range.to && d<=today; d=addDays(d,1)){
+      inRange++;
+      const dk=keyOf(d);
+      const kwh=cons[dk], co2=cachedCO2Day(region, dk);
+      if(!kwh || !co2) continue;
+      withData++;
+      totKg+=co2Footprint(kwh, co2);
+      for(let h=0;h<24;h++){ const k=+kwh[h]||0; totKwh+=k; totG+=k*(+co2[h]||0); }
+    }
+  } else if(agg==='Day'){
+    // ESTIMERET (dag-niveau): dags-forbrug × dag-snit-CO₂ (co2FootprintDaily).
+    const dc=loadDailyConsumption();
+    const kwhMap={}, co2Map={}, dayKeys=[];
+    for(let d=startOfDay(new Date(range.from)); d<=range.to && d<=today; d=addDays(d,1)){
+      inRange++;
+      const dk=keyOf(d);
+      const kwh=dc[dk], avg=cachedCO2DailyAvg(region, dk);
+      if(kwh==null || avg==null) continue;
+      dayKeys.push(dk); kwhMap[dk]=kwh; co2Map[dk]=avg;
+    }
+    const r=co2FootprintDaily(kwhMap, co2Map, dayKeys);
+    totKg=r.kg; totKwh=dayKeys.reduce((a,dk)=>a+(+kwhMap[dk]||0),0); totG=r.kg*1000; withData=r.days;
+  } else {
+    // ESTIMERET (måneds-niveau): måneds-forbrug × måneds-snit-CO₂ (kvartal/år har kun måneds-totaler).
+    unit='måneder';
+    const mc=loadMonthlyConsumption();
+    const todayMonth=new Date(today.getFullYear(),today.getMonth(),1);
+    for(let m=new Date(range.from.getFullYear(),range.from.getMonth(),1); m<=range.to && m<=todayMonth; m=addMonths(m,1)){
+      inRange++;
+      const mk=monthKey(m), kwh=mc[mk], avg=monthAvgCO2(region, m.getFullYear(), m.getMonth());
+      if(kwh==null || avg==null) continue;
+      withData++;
+      const k=+kwh||0;
+      totKg+=k*avg/1000; totKwh+=k; totG+=k*avg;
+    }
   }
+
   const intensity=totKwh?totG/totKwh:0;
-  // Ingen dage med begge datakilder → diskret status (henter / ikke tilgængelig endnu).
-  if(!daysWithData){
-    // Har vi forbrug men mangler CO₂ (henter), eller har vi slet ikke time-forbrug for perioden?
-    const fetching=daysInRange>0;
+  // Ingen enheder med begge datakilder → diskret status (henter / ikke tilgængelig endnu).
+  if(!withData){
+    const fetching=inRange>0;
     return `<div style="background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:14px 16px;margin-top:16px;">
       <div style="font-size:13px;font-weight:700;color:${th.text};">${fa('leaf',th.pal[0])} Klimaaftryk</div>
-      <div style="font-size:12px;color:${th.muted};margin-top:4px;line-height:1.45;">${fetching?'Henter klimaaftryk fra Energi Data Service…':'Klimaaftryk vises når der er time-forbrug for perioden.'}</div></div>`;
+      <div style="font-size:12px;color:${th.muted};margin-top:4px;line-height:1.45;">${fetching?'Henter klimaaftryk fra Energi Data Service…':'Klimaaftryk vises når der er forbrugsdata for perioden.'}</div></div>`;
   }
   const kgStr=totKg<10?totKg.toFixed(2):totKg.toFixed(1);
-  const partial=daysWithData<daysInRange
-    ? `<div style="font-size:11px;color:${th.muted};margin-top:6px;line-height:1.4;">Baseret på ${daysWithData} af ${daysInRange} dage med time-data.</div>`
+  const partial=withData<inRange
+    ? `<div style="font-size:11px;color:${th.muted};margin-top:6px;line-height:1.4;">Baseret på ${withData} af ${inRange} ${unit} med data.</div>`
     : '';
+  const estLabel=precise?'':` · estimeret (${agg==='Day'?'dag':'måneds'}-niveau)`;
   return `<div style="background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:14px 16px;margin-top:16px;">
     <div style="display:flex;align-items:baseline;justify-content:space-between;">
       <span style="font-size:13px;font-weight:800;color:${th.text};">${fa('leaf',th.pal[0])} Klimaaftryk</span>
       <span style="font-weight:800;font-size:16px;color:${th.pal[0]};">${kgStr} kg CO₂</span>
     </div>
-    <div style="font-size:12px;color:${th.muted};margin-top:4px;">Snit-intensitet: <strong style="color:${th.text};">${Math.round(intensity)} g/kWh</strong> · kilde: Energi Data Service</div>
+    <div style="font-size:12px;color:${th.muted};margin-top:4px;">Snit-intensitet: <strong style="color:${th.text};">${Math.round(intensity)} g/kWh</strong> · kilde: Energi Data Service${estLabel}</div>
     ${partial}</div>`;
 }
 
@@ -1368,12 +1451,17 @@ function tabContent(){
   // 'nu' (default) — pr. tema
   return app.state.theme==='bold'?viewBold(V):(app.state.theme==='play'?viewPlay(V):viewSoft(V));
 }
+// Ikke-blokkerende toast over fanelinjen — vises når app.state.toast er sat (ryddes efter ~3s).
+function toastHTML(th){
+  if(!app.state.toast) return '';
+  return `<div role="status" style="position:fixed;left:50%;transform:translateX(-50%);bottom:calc(64px + env(safe-area-inset-bottom) + 12px);z-index:50;max-width:380px;width:calc(100% - 40px);background:${th.accent};color:${th.accentText};font-size:12.5px;font-weight:700;line-height:1.4;border-radius:14px;padding:11px 16px;box-shadow:0 10px 30px -10px rgba(0,0,0,.45);animation:pop .22s ease;text-align:center;">${esc(app.state.toast)}</div>`;
+}
 function render(){
   const th=THEMES[app.state.theme];
   document.body.style.background=th.bg;
   document.getElementById('theme-color').setAttribute('content',th.bg);
   const root=document.getElementById('app');
-  root.innerHTML=`<div class="tabcontent">${tabContent()}</div>${tabBar(th)}`;
+  root.innerHTML=`<div class="tabcontent">${tabContent()}</div>${tabBar(th)}${toastHTML(th)}`;
   const sr=document.getElementById('sheet-root');
   if(app.state.settingsOpen){ document.getElementById('sheet').innerHTML=sheetHTML(); sr.classList.add('open'); }
   else sr.classList.remove('open');
@@ -1509,13 +1597,23 @@ function doRefresh(btn){
 function logClaim(apparat){
   const V=app.lastV; if(!V) return;
   const now=new Date();
-  const varighed={bil:app.state.bilH,opvask:app.state.opvaskH,vask:app.state.vaskH}[apparat]||1;
   const id=`${keyOf(now)}-${apparat}-${now.getHours()}`;
+  const existing=loadClaims();
+  // Toggle: hvis denne markering allerede findes → fjern den (knappen er on/off).
+  if(existing.some(c=>c.id===id)){
+    saveClaims(existing.filter(c=>c.id!==id));
+    app.state.toast='';
+    render();
+    return;
+  }
+  const varighed={bil:app.state.bilH,opvask:app.state.opvaskH,vask:app.state.vaskH}[apparat]||1;
   const prices=Array(24).fill(0); V.todayList.forEach(x=>{ if(x.h>=0&&x.h<24) prices[x.h]=x.total; });
   const claim={ id, apparat, dato:keyOf(now), startHour:now.getHours(), varighed, tierVedStart:V.nowTier, prices, status:'pending', point:0 };
-  const claims=loadClaims().filter(c=>c.id!==id);
-  claims.push(claim); saveClaims(claims);
+  existing.push(claim); saveClaims(existing);
+  app.state.toast='Sat i gang — verificeres når dit forbrug er klar (1-2 dage)';
   render();
+  clearTimeout(app.toastTimer);
+  app.toastTimer=setTimeout(()=>{ app.state.toast=''; render(); }, 3000);
 }
 window.logClaim=logClaim;
 window.openSettings=openSettings;window.closeSettings=closeSettings;window.setTheme=setTheme;
