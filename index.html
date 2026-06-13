@@ -879,7 +879,7 @@ function badgeFor(V,th){return [['● BILLIG LIGE NU',th.pal[0]],['○ MIDDEL PR
 function viewSoft(V){
   const th=THEMES.soft;
   const [btxt,bcol]=badgeFor(V,th);
-  const brand=`<span style="font-size:18px;">⚡</span><span style="font-family:'Fredoka',sans-serif;font-weight:600;font-size:18px;color:#11352b;">I stødet</span>`;
+  const brand=`${ellySVG(ellyState(V),26,'#11352b')}<span style="font-family:'Fredoka',sans-serif;font-weight:600;font-size:18px;color:#11352b;">I stødet</span>`;
   const aps=V.appliances.map(ap=>`
     <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #e3ede8;border-radius:14px;padding:9px 12px;">
       <span style="font-size:19px;width:22px;text-align:center;">${fa(APP_ICON[ap.key],'#11352b')}</span>
@@ -909,7 +909,7 @@ function viewSoft(V){
 
 function viewBold(V){
   const th=THEMES.bold;
-  const brand=`${ellySVG(ellyState(V),24,'#0C1117')}<span style="font-family:'Unbounded',sans-serif;font-weight:800;font-size:15px;color:#EAF2E9;letter-spacing:-.01em;">I STØDET</span>`;
+  const brand=`${ellySVG(ellyState(V),26,'#0C1117')}<span style="font-family:'Unbounded',sans-serif;font-weight:800;font-size:15px;color:#EAF2E9;letter-spacing:-.01em;">I STØDET</span>`;
   const aps=V.appliances.map(ap=>`
     <div style="display:flex;align-items:center;gap:11px;background:#131A22;border:1px solid #222e38;border-radius:12px;padding:9px 12px;">
       <span style="font-size:19px;width:22px;text-align:center;">${fa(APP_ICON[ap.key],'#C6FF3D')}</span>
@@ -942,7 +942,7 @@ function viewBold(V){
 
 function viewPlay(V){
   const th=THEMES.play;
-  const brand=`<span style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:19px;color:#2a2140;">⚡ I stødet</span>`;
+  const brand=`${ellySVG(ellyState(V),26,'#2a2140')}<span style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:19px;color:#2a2140;">I stødet</span>`;
   const aps=V.appliances.map(ap=>`
     <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1.5px solid #efe4f8;border-radius:14px;padding:8px 12px;">
       <span style="font-size:20px;width:23px;text-align:center;">${fa(APP_ICON[ap.key],'#6C4BD8')}</span>
@@ -966,9 +966,9 @@ function viewPlay(V){
 
 /* ===================== POINT-FANE ===================== */
 function brandFor(th){
-  if(app.state.theme==='bold') return `<span style="font-family:'Unbounded',sans-serif;font-weight:800;font-size:15px;color:${th.text};letter-spacing:-.01em;">I STØDET</span>`;
-  if(app.state.theme==='play') return `<span style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:19px;color:${th.text};">⚡ I stødet</span>`;
-  return `<span style="font-size:18px;">⚡</span><span style="font-family:'Fredoka',sans-serif;font-weight:600;font-size:18px;color:${th.text};">I stødet</span>`;
+  if(app.state.theme==='bold') return `${ellySVG('mid',26,'#0C1117')}<span style="font-family:'Unbounded',sans-serif;font-weight:800;font-size:15px;color:${th.text};letter-spacing:-.01em;">I STØDET</span>`;
+  if(app.state.theme==='play') return `${ellySVG('mid',26,'#2a2140')}<span style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:19px;color:${th.text};">I stødet</span>`;
+  return `${ellySVG('mid',26,'#11352b')}<span style="font-family:'Fredoka',sans-serif;font-weight:600;font-size:18px;color:${th.text};">I stødet</span>`;
 }
 function pointView(V){
   const th=THEMES[app.state.theme];
