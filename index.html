@@ -47,8 +47,7 @@
 <script type="module">
 "use strict";
 import {
-  ELAFGIFT, ENERGINET, MOMS, DSO_TARIFFS, season, parseDK,
-  nettarif, componentsOf, totalOf, tierOf, loHi, bestWindow, seriesForDay
+  DSO_TARIFFS, parseDK, totalOf, tierOf, loHi, bestWindow, seriesForDay
 } from './pricing.js';
 
 /* ===================== PRIS-MOTOR (rigtige data) ===================== */
@@ -216,16 +215,17 @@ function chartHTML(list,th,nowH,opts){
 }
 function ringHTML(list,th,nowH){
   if(!list.length) return `<div style="padding:40px 6px;text-align:center;color:${th.muted};font-size:13px;">Morgendagens priser kommer efter kl. 13 🙂</div>`;
-  const byH=h=>list.find(x=>x.h===h);
+  const byHour=h=>list.find(x=>x.h===h);
   const vals=list.map(x=>x.total);
   const [lo,hi]=[Math.min(...vals),Math.max(...vals)];
   const pal=['#2BC48A','#FFB020','#FF5470'];
   const segs=[];
-  for(let i=0;i<24;i++){const e=byH(i);const p=e?e.total:lo;segs.push(pal[tierOf(p,lo,hi)]+' '+(i*15)+'deg '+((i+1)*15)+'deg');}
+  // Urskive er bevidst fast 24-segment (i modsætning til bar-grafen som er data-drevet); manglende DST-time falder tilbage til lo.
+  for(let i=0;i<24;i++){const e=byHour(i);const p=e?e.total:lo;segs.push(pal[tierOf(p,lo,hi)]+' '+(i*15)+'deg '+((i+1)*15)+'deg');}
   let dot='';
   if(nowH>=0){const a=(nowH*15+7.5)*Math.PI/180,r=92,c=115;const x=c+r*Math.sin(a),y=c-r*Math.cos(a);
     dot=`<div style="position:absolute;left:${x-9}px;top:${y-9}px;width:18px;height:18px;border-radius:50%;background:#2a2140;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);"></div>`;}
-  const centerEntry=byH(nowH>=0?nowH:list[0].h)||list[0];
+  const centerEntry=byHour(nowH>=0?nowH:list[0].h)||list[0];
   const centerVal=centerEntry.total;
   return `<div style="position:relative;width:230px;height:230px;margin:0 auto;">
     <div style="position:absolute;inset:0;border-radius:50%;background:conic-gradient(${segs.join(',')});-webkit-mask:radial-gradient(circle,transparent 56%,#000 57%);mask:radial-gradient(circle,transparent 56%,#000 57%);"></div>
