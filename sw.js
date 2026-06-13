@@ -1,11 +1,12 @@
 // Service worker til Elpriser-PWA
-const CACHE = 'elpriser-v6';
+const CACHE = 'elpriser-v7';
 const SHELL = [
   'index.html',
   'pricing.js',
   'gamify.js',
   'eloverblik.js',
   'forbrug-analyse.js',
+  'co2.js',
   'manifest.webmanifest',
   'icon-192.png',
   'icon-512.png',
@@ -29,8 +30,9 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // Priser hentes altid live fra nettet (ingen caching)
+  // Priser + CO₂ hentes altid live fra nettet (ingen caching)
   if (url.hostname.includes('elprisenligenu')) return;
+  if (url.hostname.includes('energidataservice')) return;
 
   // App-skal: network-first med cache som fallback (virker offline)
   e.respondWith(

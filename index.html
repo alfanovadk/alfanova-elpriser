@@ -129,12 +129,13 @@
 "use strict";
 import {
   DSO_TARIFFS, parseDK, totalOf, tierOf, loHi, bestWindow, seriesForDay, tierClass, componentsOf
-} from './pricing.js?v=3';
-import { getAccessToken, getMeteringPoints, getTimeSeries, parseTimeSeries, parseBuckets } from './eloverblik.js?v=3';
-import { verifyClaim, pointsFor, smartScore, badgeUpdates } from './gamify.js?v=3';
+} from './pricing.js?v=4';
+import { getAccessToken, getMeteringPoints, getTimeSeries, parseTimeSeries, parseBuckets } from './eloverblik.js?v=4';
+import { verifyClaim, pointsFor, smartScore, badgeUpdates } from './gamify.js?v=4';
 import {
-  dayProfile, weekdayProfile, periodTotals, pctChange, toCSV
-} from './forbrug-analyse.js?v=3';
+  dayProfile, weekdayProfile, periodTotals, pctChange, toCSV, co2Footprint, avgIntensity
+} from './forbrug-analyse.js?v=4';
+import { fetchCO2 } from './co2.js?v=4';
 
 /* ===================== PRIS-MOTOR (rigtige data) ===================== */
 const DAYS=['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'];
@@ -285,6 +286,10 @@ function loadMonthlyConsumption(){ try{ return JSON.parse(localStorage.getItem('
 function saveMonthlyConsumption(o){ try{ localStorage.setItem('elpriser_consumption_monthly', JSON.stringify(o)); }catch(e){} }
 function loadGamify(){ try{ return JSON.parse(localStorage.getItem('elpriser_gamify')||'{}'); }catch(e){ return {}; } }
 function saveGamify(g){ try{ localStorage.setItem('elpriser_gamify', JSON.stringify(g)); }catch(e){} }
+// CO₂-intensitet pr. lokal time { dayKey: number[24] } (g/kWh). Permanent cache (fortidens CO₂
+// ændrer sig aldrig) — merges aldrig destruktivt, ryddes aldrig. Pr. prisområde-nøgle.
+function loadCO2(){ try{ return JSON.parse(localStorage.getItem('elpriser_co2')||'{}'); }catch(e){ return {}; } }
+function saveCO2(o){ try{ localStorage.setItem('elpriser_co2', JSON.stringify(o)); }catch(e){} }
 
 /* ===================== STALE-GUARD (tålmodig baggrunds-hentning) ===================== */
 // DataHub er ofte transient nede og data er kun 1-2 dage forsinket — derfor poller vi sjældent.
@@ -482,6 +487,8 @@ async function loadAnalyseData(force){
   // Cache-first: render altid fra cachen. Hent kun friskt hvis cachen mangler periodens data
   // ELLER stale-vinduet er overskredet ELLER brugeren forcerer. Aldrig tæt auto-retry.
   const cacheMissing=!hasCachedPeriod(a.periodeType, range);
+  // CO₂-intensitet for perioden (EDS) — egen per-dag-cache-miss-gate, no-op når alt er cachet.
+  loadCO2ForPeriod(range);
   if(!shouldRefreshConsumption(force, cacheMissing)){
     app.state.analyseMsg=null;
     if(agg==='Hour') await ensureDayPrice(isoDate(range.from));
@@ -503,6 +510,36 @@ async function loadAnalyseData(force){
   // hent dag-priser til tier-farvning når perioden er en enkelt dag (Hour)
   if(agg==='Hour' && !e1){ await ensureDayPrice(isoDate(range.from)); }
   render();
+}
+
+// CO₂-cache-nøgle: prisområde-prefix så DK1/DK2 ikke blandes. `${region}|${dayKey}`.
+function co2Key(region, dayKey){ return `${region}|${dayKey}`; }
+// CO₂-intensitet for én dag fra cache → number[24] eller null. Bundet til prisområde.
+function cachedCO2Day(region, dayKey){ const c=loadCO2(); return c[co2Key(region, dayKey)]||null; }
+
+// Hent CO₂-intensitet for de dage i [from,to] vi mangler i cachen. Kun fortid/i dag (EDS
+// har ikke fremtid). Non-blocking: behold cache ved fejl. Polite: kun manglende dage hentes.
+async function loadCO2ForPeriod(range){
+  const region=app.state.region;
+  const cache=loadCO2();
+  // Saml manglende dag-nøgler i intervallet (afgrænset til ikke-fremtid + maks i dag).
+  const today=startOfDay(new Date());
+  const need=[];
+  for(let d=startOfDay(new Date(range.from)); d<=range.to && d<=today; d=addDays(d,1)){
+    const dk=keyOf(d);
+    if(!cache[co2Key(region, dk)]) need.push(new Date(d));
+  }
+  if(!need.length) return;
+  // Ét samlet kald over hele det manglende span (EDS er hurtig — men vær alligevel sparsom).
+  const span0=need[0], span1=need[need.length-1];
+  const fromISO=isoDate(span0), toISO=isoDate(addDays(span1,1)); // end er eksklusiv
+  try{
+    const parsed=await fetchCO2(region, fromISO, toISO);   // { dayKey: number[24] }
+    const c=loadCO2();
+    for(const dk of Object.keys(parsed)){ c[co2Key(region, dk)]=parsed[dk]; }
+    saveCO2(c);
+    render();
+  }catch(e){ /* non-blocking: behold cache, EDS-fejl er sjælden og transient */ }
 }
 
 async function ensureDayPrice(dayKey){
@@ -1061,6 +1098,45 @@ function statCard(th,label,value,sub){
     ${sub?`<div style="font-size:11px;color:${th.muted};margin-top:2px;">${sub}</div>`:''}</div>`;
 }
 
+// Klimaaftryk-kort for den valgte periode. Summerer kg CO₂ over de dage hvor vi har BÅDE
+// time-forbrug (elpriser_consumption) OG time-CO₂ (elpriser_co2) cachet. Viser intet tal hvis
+// ingen dage matcher (ingen fabrikation) — i stedet en kompakt "henter"-linje.
+function co2Card(th, type, range){
+  const region=app.state.region;
+  const cons=loadConsumption();
+  let totKg=0, totKwh=0, totG=0, daysWithData=0, daysInRange=0;
+  const today=startOfDay(new Date());
+  for(let d=startOfDay(new Date(range.from)); d<=range.to && d<=today; d=addDays(d,1)){
+    daysInRange++;
+    const dk=keyOf(d);
+    const kwh=cons[dk], co2=cachedCO2Day(region, dk);
+    if(!kwh || !co2) continue;
+    daysWithData++;
+    totKg+=co2Footprint(kwh, co2);
+    for(let h=0;h<24;h++){ const k=+kwh[h]||0; totKwh+=k; totG+=k*(+co2[h]||0); }
+  }
+  const intensity=totKwh?totG/totKwh:0;
+  // Ingen dage med begge datakilder → diskret status (henter / ikke tilgængelig endnu).
+  if(!daysWithData){
+    // Har vi forbrug men mangler CO₂ (henter), eller har vi slet ikke time-forbrug for perioden?
+    const fetching=daysInRange>0;
+    return `<div style="background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:14px 16px;margin-top:16px;">
+      <div style="font-size:13px;font-weight:700;color:${th.text};">🌱 Klimaaftryk</div>
+      <div style="font-size:12px;color:${th.muted};margin-top:4px;line-height:1.45;">${fetching?'Henter klimaaftryk fra Energi Data Service…':'Klimaaftryk vises når der er time-forbrug for perioden.'}</div></div>`;
+  }
+  const kgStr=totKg<10?totKg.toFixed(2):totKg.toFixed(1);
+  const partial=daysWithData<daysInRange
+    ? `<div style="font-size:11px;color:${th.muted};margin-top:6px;line-height:1.4;">Baseret på ${daysWithData} af ${daysInRange} dage med time-data.</div>`
+    : '';
+  return `<div style="background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:14px 16px;margin-top:16px;">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;">
+      <span style="font-size:13px;font-weight:800;color:${th.text};">🌱 Klimaaftryk</span>
+      <span style="font-weight:800;font-size:16px;color:${th.pal[0]};">${kgStr} kg CO₂</span>
+    </div>
+    <div style="font-size:12px;color:${th.muted};margin-top:4px;">Snit-intensitet: <strong style="color:${th.text};">${Math.round(intensity)} g/kWh</strong> · kilde: Energi Data Service</div>
+    ${partial}</div>`;
+}
+
 function forbrugView(){
   const th=THEMES[app.state.theme];
   const ev=app.state.eloverblik;
@@ -1210,10 +1286,9 @@ function forbrugView(){
     </div>`;
   }
 
-  // klimaaftryk — udskudt (ingen fabrikerede tal)
-  const klima=`<div style="background:${th.surface};border:1px dashed ${th.border};border-radius:16px;padding:14px 16px;margin-top:16px;opacity:.8;">
-    <div style="font-size:13px;font-weight:700;color:${th.text};">🌱 Klimaaftryk (kommer snart)</div>
-    <div style="font-size:12px;color:${th.muted};margin-top:4px;line-height:1.45;">CO₂-aftryk pr. kWh varierer over døgnet. Datakilden er under afklaring — vi viser ikke tal vi ikke kan stå inde for.</div></div>`;
+  // klimaaftryk — rigtige tal fra Energi Data Service (CO2Emis). Kræver TIME-forbrug + time-CO₂
+  // for de samme dage; vi summerer kun dage hvor begge findes (ingen fabrikerede tal).
+  const klima=co2Card(th, a.periodeType, range);
 
   const csvBtn=`<button onclick="exportForbrugCSV()" style="width:100%;margin-top:18px;padding:13px;border:1px solid ${th.border};background:${th.surface};color:${th.text};font:inherit;font-weight:800;font-size:14px;border-radius:14px;cursor:pointer;">⬇︎ Download som CSV</button>`;
 

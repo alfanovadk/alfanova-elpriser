@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   aggregateByDay, aggregateByMonth, dayProfile, weekdayProfile,
   periodTotals, pctChange, tierSplit, toCSV, weekdayOf, monthKeyOf,
+  co2Footprint, avgIntensity,
 } from './forbrug-analyse.js';
 
 test('aggregateByDay: summerer time-arrays pr. dag', () => {
@@ -147,4 +148,40 @@ test('toCSV: tomt → kun header med dato;kwh', () => {
 test('monthKeyOf: udleder år-måned fra dayKey', () => {
   assert.equal(monthKeyOf('2026-6-13'), '2026-6');
   assert.equal(monthKeyOf('2025-12-1'), '2025-12');
+});
+
+test('co2Footprint: 1 kWh × 100 g alle 24 timer → 2.4 kg', () => {
+  const kwh = Array(24).fill(1);
+  const co2 = Array(24).fill(100);
+  assert.ok(Math.abs(co2Footprint(kwh, co2) - 2.4) < 1e-9);
+});
+
+test('co2Footprint: manglende timer bidrager med 0', () => {
+  const kwh = [2, undefined, 3];           // kun time 0 og 2 har forbrug
+  const co2 = [100, 100, 100];             // time 1 mangler kWh → 0 bidrag
+  // (2*100 + 0 + 3*100)/1000 = 0.5
+  assert.ok(Math.abs(co2Footprint(kwh, co2) - 0.5) < 1e-9);
+});
+
+test('co2Footprint: manglende co2-værdier behandles som 0', () => {
+  const kwh = Array(24).fill(1);
+  const co2 = [50];                        // kun time 0 har intensitet
+  assert.ok(Math.abs(co2Footprint(kwh, co2) - 0.05) < 1e-9);
+});
+
+test('co2Footprint: tomt/null input → 0', () => {
+  assert.equal(co2Footprint(null, null), 0);
+  assert.equal(co2Footprint([], []), 0);
+});
+
+test('avgIntensity: forbrugs-vægtet snit', () => {
+  // 1 kWh @ 50g + 3 kWh @ 150g = (50+450)/4 = 125 g/kWh
+  const kwh = [1, 3];
+  const co2 = [50, 150];
+  assert.ok(Math.abs(avgIntensity(kwh, co2) - 125) < 1e-9);
+});
+
+test('avgIntensity: nul forbrug → 0 (ingen division-med-0)', () => {
+  assert.equal(avgIntensity([0, 0], [100, 200]), 0);
+  assert.equal(avgIntensity(null, null), 0);
 });

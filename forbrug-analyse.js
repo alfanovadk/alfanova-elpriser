@@ -98,6 +98,29 @@ export function tierSplit(hourlyKwh, prices){
   return out;
 }
 
+// CO₂-aftryk for ét døgn: Σ over timer (kWh[h] × g/kWh[h] / 1000) → kg CO₂.
+// Manglende værdier (undefined/null) tæller som 0 — aldrig fabrikerede tal.
+export function co2Footprint(hourlyKwh, hourlyCo2){
+  const kwh = hourlyKwh || [], co2 = hourlyCo2 || [];
+  let g = 0;
+  for(let h = 0; h < 24; h++){
+    g += (+kwh[h] || 0) * (+co2[h] || 0);
+  }
+  return g / 1000;   // gram → kg
+}
+
+// Forbrugs-vægtet gennemsnits-intensitet (g/kWh) for ét døgn. Uden forbrug → 0.
+export function avgIntensity(hourlyKwh, hourlyCo2){
+  const kwh = hourlyKwh || [], co2 = hourlyCo2 || [];
+  let totKwh = 0, totG = 0;
+  for(let h = 0; h < 24; h++){
+    const k = +kwh[h] || 0;
+    totKwh += k;
+    totG += k * (+co2[h] || 0);
+  }
+  return totKwh ? totG / totKwh : 0;
+}
+
 function pad2(n){ return String(n).padStart(2, '0'); }
 function num(x){ return String(x).replace('.', ','); }
 
