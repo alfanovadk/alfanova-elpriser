@@ -1680,7 +1680,7 @@ loadState();
 render();
 load();
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)load();});
-if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));}
+if(!window.Capacitor?.isNativePlatform() && 'serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));}
 </script>
 </body>
 </html>
