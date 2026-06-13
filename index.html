@@ -106,6 +106,9 @@
     @keyframes glowY{0%,100%{filter:drop-shadow(0 0 0 rgba(255,210,63,0))}50%{filter:drop-shadow(0 0 10px rgba(255,210,63,.95))}}
     .charge{animation:glowY .6s ease-in-out infinite}
     .charge .char{animation:charge .6s ease-in-out infinite}
+
+    @keyframes cheer{0%{transform:rotate(0) scale(1)}35%{transform:rotate(-18deg) scale(1.05)}70%{transform:rotate(380deg) scale(1.05)}100%{transform:rotate(360deg) scale(1)}}
+    .cheer .char{animation:cheer 1.1s cubic-bezier(.4,1.4,.5,1) infinite}
   }
 </style>
 </head>
@@ -118,7 +121,8 @@
 import {
   DSO_TARIFFS, parseDK, totalOf, tierOf, loHi, bestWindow, seriesForDay, tierClass, componentsOf
 } from './pricing.js';
-import { getAccessToken, getMeteringPoints } from './eloverblik.js';
+import { getAccessToken, getMeteringPoints, getTimeSeries, parseTimeSeries } from './eloverblik.js';
+import { verifyClaim, pointsFor, smartScore, badgeUpdates } from './gamify.js';
 
 /* ===================== PRIS-MOTOR (rigtige data) ===================== */
 const DAYS=['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'];
@@ -165,7 +169,7 @@ function voltSVG(stateClass, size, stroke){
     </g>
   </svg>`;
 }
-function voltState(V){ return app.loading ? 'charge' : tierClass(V.nowTier); }
+function voltState(V){ if(app.cheerUntil && Date.now()<app.cheerUntil) return 'cheer'; return app.loading ? 'charge' : tierClass(V.nowTier); }
 
 /* ===================== APP STATE ===================== */
 const app={
@@ -213,6 +217,7 @@ async function load(){
   }catch(e){ app.loading=false; app.error=e.message; }
   bumpStreak();
   render();
+  refreshConsumption().then(verifyPending).catch(()=>{});
 }
 
 function keyOf(d){return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;}
@@ -246,6 +251,76 @@ function bumpStreak(){
 
 function loadClaims(){ try{ return JSON.parse(localStorage.getItem('elpriser_claims')||'[]'); }catch(e){ return []; } }
 function saveClaims(arr){ try{ localStorage.setItem('elpriser_claims', JSON.stringify(arr)); }catch(e){} }
+
+/* ===================== FORBRUG + GAMIFY (lokal persistens) ===================== */
+function loadConsumption(){ try{ return JSON.parse(localStorage.getItem('elpriser_consumption')||'{}'); }catch(e){ return {}; } }
+function saveConsumption(o){ try{ localStorage.setItem('elpriser_consumption', JSON.stringify(o)); }catch(e){} }
+function loadGamify(){ try{ return JSON.parse(localStorage.getItem('elpriser_gamify')||'{}'); }catch(e){ return {}; } }
+function saveGamify(g){ try{ localStorage.setItem('elpriser_gamify', JSON.stringify(g)); }catch(e){} }
+function dateFromKey(k){ const [y,m,d]=k.split('-').map(Number); return new Date(y,m-1,d); }
+function isoDate(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+function prevDayKey(k){ return keyOf(addDays(dateFromKey(k),-1)); }
+
+async function refreshConsumption(){
+  const ev=app.state.eloverblik;
+  if(!ev.refreshToken || !ev.meteringPointId) return;
+  const claims=loadClaims();
+  const today=keyOf(new Date());
+  // only fetch for pending claims whose day is in the past (data ~1-2 days delayed)
+  const pending=claims.filter(c=>c.status==='pending' && c.dato!==today);
+  if(!pending.length) return;
+  const cons=loadConsumption();
+  const needed=[...new Set(pending.map(c=>c.dato).filter(d=>!cons[d]))];
+  if(!needed.length) return;
+  try{
+    let access=ev.accessToken;
+    if(!access || Date.now()>ev.accessTokenExp){
+      access=await getAccessToken(ev.refreshToken);
+      ev.accessToken=access; ev.accessTokenExp=Date.now()+23*3600*1000; saveState();
+    }
+    const dates=needed.map(dateFromKey).sort((a,b)=>a-b);
+    const from=isoDate(dates[0]); const to=isoDate(addDays(dates[dates.length-1],1));
+    const json=await getTimeSeries(access, ev.meteringPointId, from, to);
+    Object.assign(cons, parseTimeSeries(json));
+    saveConsumption(cons);
+  }catch(e){ /* non-blocking: leave pending */ }
+}
+
+function verifyPending(){
+  const claims=loadClaims();
+  const cons=loadConsumption();
+  const g=loadGamify();
+  let changed=false;
+  const badgesBefore=JSON.stringify(g.badges||{});
+  for(const c of claims){
+    if(c.status!=='pending') continue;
+    const kwh=cons[c.dato];
+    if(!kwh) continue;
+    const prices=c.prices||Array(24).fill(0);
+    const status=verifyClaim(c, kwh, prices);
+    if(status==='pending') continue;
+    c.status=status; changed=true;
+    if(status==='confirmed'){
+      c.point=pointsFor(c, prices);
+      g.totalPoint=(g.totalPoint||0)+c.point;
+      // streak: consecutive days with >=1 confirmed
+      if(g.lastConfirmedDate!==c.dato){
+        g.streak = (g.lastConfirmedDate===prevDayKey(c.dato)) ? (g.streak||0)+1 : 1;
+        g.lastConfirmedDate=c.dato;
+      }
+    }
+  }
+  if(changed){
+    g.badges=badgeUpdates(g, claims);
+    saveClaims(claims); saveGamify(g);
+    if(JSON.stringify(g.badges)!==badgesBefore){
+      // a badge flipped — celebrate
+      app.cheerUntil=Date.now()+4000;
+    }
+    render();
+  }
+}
 
 function claimsHTML(th){
   const today=loadClaims().filter(c=>c.dato===keyOf(new Date()));
@@ -502,6 +577,7 @@ function viewBold(V){
 
 function viewPlay(V){
   const th=THEMES.play;
+  const g=loadGamify();
   const brand=`<span style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:20px;color:#2a2140;">⚡ Elpriser</span>`;
   const pill=`<span style="font-size:11px;font-weight:800;color:#6C4BD8;background:#EDE7FB;padding:6px 11px;border-radius:99px;">${V.regionLabel}</span>`;
   const aps=V.appliances.map(ap=>`
@@ -511,16 +587,18 @@ function viewPlay(V){
         <button onclick="logClaim('${ap.key}')" style="margin-top:6px;border:1px solid ${th.border};background:${th.surface};color:${th.accent};font:inherit;font-weight:700;font-size:11px;border-radius:99px;padding:5px 10px;cursor:pointer;">Kør nu</button></div>
       <div style="text-align:right;"><div style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:15px;color:#fff;background:#2BC48A;padding:5px 11px;border-radius:99px;">${ap.win}</div><div style="font-size:11px;color:#948aa8;margin-top:3px;">spar ~${ap.save} kr</div></div>
     </div>`).join('');
-  const nat=V.appliances[0].win!=='—' && (+V.appliances[0].win.slice(0,2))<6;
-  const spar=V.nowTier===0;
   const badge=(emoji,label,active)=>`<div style="flex:1;text-align:center;background:${active?'#fff':'#F6F1FC'};border:1.5px ${active?'solid #efe4f8':'dashed #d6c4ef'};border-radius:16px;padding:13px 8px;${active?'':'opacity:.6;'}"><div style="font-size:26px;">${emoji}</div><div style="font-size:11px;font-weight:700;color:${active?'#6b6480':'#948aa8'};margin-top:4px;">${label}</div></div>`;
+  const todayKwh=loadConsumption()[keyOf(new Date())];
+  const smart = (todayKwh && V.hasToday) ? smartScore(todayKwh, V.todayList.map(x=>x.total)) : null;
   return `<div class="pane">
     ${header(brand,pill,'#fff','50%')}
     <div style="display:flex;gap:9px;margin-bottom:16px;">
       <div style="flex:1;background:#FFE27A;border-radius:16px;padding:11px 13px;display:flex;align-items:center;gap:9px;"><span style="font-size:20px;">🏆</span>
-        <div><div style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:18px;color:#2a2140;line-height:1;">${V.score}</div><div style="font-size:10.5px;font-weight:700;color:#7a6a2c;">GUNSTIG NU</div></div></div>
+        <div><div style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:18px;color:#2a2140;line-height:1;">${g.totalPoint||0}</div><div style="font-size:10.5px;font-weight:700;color:#7a6a2c;">POINT</div></div></div>
       <div style="flex:1;background:#FFD0DD;border-radius:16px;padding:11px 13px;display:flex;align-items:center;gap:9px;"><span style="font-size:20px;">🔥</span>
-        <div><div style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:18px;color:#2a2140;line-height:1;">${V.streak}</div><div style="font-size:10.5px;font-weight:700;color:#a3415c;">DAGES STIME</div></div></div>
+        <div><div style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:18px;color:#2a2140;line-height:1;">${g.streak||0}</div><div style="font-size:10.5px;font-weight:700;color:#a3415c;">DAGES STIME</div></div></div>
+      ${smart!==null?`<div style="flex:1;background:#D8F3E7;border-radius:16px;padding:11px 13px;display:flex;align-items:center;gap:9px;"><span style="font-size:20px;">📊</span>
+        <div><div style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:18px;color:#2a2140;line-height:1;">${smart}</div><div style="font-size:10.5px;font-weight:700;color:#2c7a5a;">SMART-SCORE</div></div></div>`:''}
     </div>
     <div style="background:#fff;border:1.5px solid #efe4f8;border-radius:26px;padding:20px 16px 8px;box-shadow:0 14px 34px -22px rgba(108,75,216,.6);">
       <div style="max-width:170px;margin:0 auto 14px;">${tabsHTML(th)}</div>
@@ -534,7 +612,7 @@ function viewPlay(V){
     <div style="display:flex;flex-direction:column;gap:10px;">${aps}</div>
     ${claimsHTML(th)}
     <h3 style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:16px;color:#2a2140;margin:22px 0 12px;">Badges</h3>
-    <div style="display:flex;gap:10px;">${badge('🌙','Natteravn',nat)}${badge('💰','Sparefugl',spar)}${badge(V.streak>=30?'⭐':'🔒',V.streak>=30?'30 dage':(30-V.streak)+' dage',V.streak>=30)}</div>
+    <div style="display:flex;gap:10px;">${badge('🌙','Natteravn',g.badges?.natteravn)}${badge('💰','Sparefugl',g.badges?.sparefugl)}${badge('⭐','30 dage',g.badges?.dage30)}${badge('🔮','Sandsiger',g.badges?.sandsiger)}</div>
     ${footer(th)}</div>`;
 }
 
@@ -729,7 +807,8 @@ function logClaim(apparat){
   const now=new Date();
   const varighed={bil:app.state.bilH,opvask:app.state.opvaskH,vask:app.state.vaskH}[apparat]||1;
   const id=`${keyOf(now)}-${apparat}-${now.getHours()}`;
-  const claim={ id, apparat, dato:keyOf(now), startHour:now.getHours(), varighed, tierVedStart:V.nowTier, status:'pending', point:0 };
+  const prices=Array(24).fill(0); V.todayList.forEach(x=>{ if(x.h>=0&&x.h<24) prices[x.h]=x.total; });
+  const claim={ id, apparat, dato:keyOf(now), startHour:now.getHours(), varighed, tierVedStart:V.nowTier, prices, status:'pending', point:0 };
   const claims=loadClaims().filter(c=>c.id!==id);
   claims.push(claim); saveClaims(claims);
   render();
