@@ -14,6 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800;900&family=Fredoka:wght@400;500;600;700&family=Baloo+2:wght@500;600;700;800&family=Unbounded:wght@400;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://kit.fontawesome.com/1f919c0c2f.js" crossorigin="anonymous"></script>
 <title>Elpriser</title>
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -142,6 +143,15 @@ const DAYS=['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'];
 function pad(n){return String(n).padStart(2,'0');}
 function kr(ore){return (ore/100).toFixed(2).replace('.',',');}
 function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ===================== IKONER (FontAwesome) ===================== */
+// FA-kit swapper <i>-tags klient-side. Farve arves fra inline style (tema-variabler).
+function fa(name, color, size){
+  const st = `color:${color||'inherit'};` + (size?`font-size:${size};`:'');
+  return `<i class="fa-solid fa-${name}" style="${st}"></i>`;
+}
+// apparat-nøgle → FA-ikon
+const APP_ICON={ bil:'car', opvask:'utensils', vask:'shirt' };
 
 /* ===================== THEMES ===================== */
 const THEMES={
@@ -619,12 +629,11 @@ function verifyPending(){
 function claimsHTML(th){
   const today=loadClaims().filter(c=>c.dato===keyOf(new Date()));
   if(!today.length) return '';
-  const emo={bil:'🚗',opvask:'🍽️',vask:'👕'};
   const chip=s=> s==='confirmed'?`<span style="color:#2BC48A;font-weight:700;">✓ bekræftet</span>`
     : s==='unconfirmed'?`<span style="color:${th.muted};">ikke bekræftet</span>`
     : `<span style="color:${th.muted};">afventer data</span>`;
   const rows=today.map(c=>`<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:4px 0;">
-    <span>${emo[c.apparat]||'⚡'}</span><span style="flex:1;color:${th.text};">kl ${pad(c.startHour)}</span>${chip(c.status)}</div>`).join('');
+    <span style="width:18px;text-align:center;">${fa(APP_ICON[c.apparat]||'bolt',th.text)}</span><span style="flex:1;color:${th.text};">kl ${pad(c.startHour)}</span>${chip(c.status)}</div>`).join('');
   return `<div style="background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:12px 14px;margin-top:12px;">
     <div style="font-weight:800;font-size:12px;letter-spacing:.06em;color:${th.muted};margin-bottom:6px;">DINE MARKERINGER I DAG</div>${rows}</div>`;
 }
@@ -652,13 +661,13 @@ function computeView(){
 
   const pool=futurePool();
   const dayAvg=todayVals.length?todayVals.reduce((a,b)=>a+b,0)/todayVals.length:0;
-  const mkAp=(key,emoji,name,verb,len,kwh)=>{const w=bestWindow(pool,len);
+  const mkAp=(key,name,verb,len,kwh)=>{const w=bestWindow(pool,len);
     const saveKr=Math.max(0,(dayAvg-(w?w.avg:dayAvg))/100*kwh);
-    return {key,emoji,name,sub:len+' timers '+verb,win:winStr(w),when:whenText(w),price:kr(w?w.avg:0),save:saveKr.toFixed(0)};};
+    return {key,name,sub:len+' timers '+verb,win:winStr(w),when:whenText(w),price:kr(w?w.avg:0),save:saveKr.toFixed(0)};};
   const appliances=[
-    mkAp('bil','🚗','Elbilen','ladning',app.state.bilH,KWH.bil),
-    mkAp('opvask','🍽️','Opvask','program',app.state.opvaskH,KWH.opvask),
-    mkAp('vask','👕','Vasketøj','program',app.state.vaskH,KWH.vask)
+    mkAp('bil','Elbilen','ladning',app.state.bilH,KWH.bil),
+    mkAp('opvask','Opvask','program',app.state.opvaskH,KWH.opvask),
+    mkAp('vask','Vasketøj','program',app.state.vaskH,KWH.vask)
   ];
   const savedToday=Math.round(appliances.reduce((a,b)=>a+(+b.save),0));
   const score=hasToday?Math.round(Math.max(0,Math.min(100,(peak-nowTotal)/Math.max(1,peak-loT)*100))):0;
@@ -763,12 +772,13 @@ function tabsHTML(th){
       return `<button onclick="setChartTab('${k}')" style="flex:1;padding:8px 0;border:none;border-radius:99px;font:inherit;font-weight:800;font-size:12.5px;cursor:pointer;transition:all .15s;background:${on?t.on:'transparent'};color:${on?t.onText:t.off};">${l}</button>`;}).join('')+`</div>`;
 }
 /* ===================== TAB-SKAL ===================== */
-const TABS=[['nu','⚡','Nu'],['forbrug','📊','Forbrug'],['point','🏆','Point'],['mere','⋯','Mere']];
+const TABS=[['nu','bolt','Nu'],['forbrug','chart-column','Forbrug'],['point','trophy','Point'],['mere','ellipsis','Mere']];
 function tabBar(th){
   const t=th.tab;
   const btns=TABS.map(([k,ic,lbl])=>{const on=app.state.tab===k;
-    return `<button class="tabbtn" onclick="setTab('${k}')" aria-label="${lbl}" style="color:${on?th.accent:t.off};background:${on?th.accentSoft:'transparent'};">
-      <span class="ic">${ic}</span><span>${lbl}</span></button>`;}).join('');
+    const col=on?th.accent:t.off;
+    return `<button class="tabbtn" onclick="setTab('${k}')" aria-label="${lbl}" style="color:${col};background:${on?th.accentSoft:'transparent'};">
+      <span class="ic"><i class="fa-solid fa-${ic}" style="color:${col};"></i></span><span>${lbl}</span></button>`;}).join('');
   return `<nav class="tabbar" style="--tb-bg:${th.sheetBg};--tb-border:${th.border};">${btns}</nav>`;
 }
 // kompakt header pr. fane — brand + valgfri højre-knapper
@@ -777,10 +787,10 @@ function compactHeader(th,brandHTML,rightHTML){
     <span style="margin-left:auto;display:flex;align-items:center;gap:8px;">${rightHTML||''}</span></div>`;
 }
 function gearBtn(th,bg,radius){
-  return `<button onclick="openSettings()" aria-label="Indstillinger" style="width:32px;height:32px;border-radius:${radius};background:${bg};border:1px solid rgba(0,0,0,.06);display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;padding:0;">⚙️</button>`;
+  return `<button onclick="openSettings()" aria-label="Indstillinger" style="width:32px;height:32px;border-radius:${radius};background:${bg};border:1px solid rgba(0,0,0,.06);display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;padding:0;color:${th.text};">${fa('gear',th.text)}</button>`;
 }
 function refreshBtn(th,bg,radius){
-  return `<button onclick="doRefresh(this)" aria-label="Opdatér" style="width:32px;height:32px;border-radius:${radius};background:${bg};border:1px solid rgba(0,0,0,.06);display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;padding:0;">↻</button>`;
+  return `<button onclick="doRefresh(this)" aria-label="Opdatér" style="width:32px;height:32px;border-radius:${radius};background:${bg};border:1px solid rgba(0,0,0,.06);display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;padding:0;color:${th.text};">${fa('rotate-right',th.text)}</button>`;
 }
 function regionPillFor(th,V,style){
   if(style==='bold') return `<span style="font-size:11px;font-weight:800;color:${th.accent};border:1px solid #2c3a2a;padding:5px 10px;border-radius:8px;">${V.regionShort}</span>`;
@@ -801,7 +811,7 @@ function viewSoft(V){
   const brand=`<span style="font-size:18px;">⚡</span><span style="font-family:'Fredoka',sans-serif;font-weight:600;font-size:18px;color:#11352b;">Elpriser</span>`;
   const aps=V.appliances.map(ap=>`
     <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #e3ede8;border-radius:14px;padding:9px 12px;">
-      <span style="font-size:19px;">${ap.emoji}</span>
+      <span style="font-size:19px;width:22px;text-align:center;">${fa(APP_ICON[ap.key],'#11352b')}</span>
       <div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13.5px;color:#11352b;">${ap.name}</div><div style="font-size:11.5px;color:#7c8a83;">${ap.when}</div></div>
       <button onclick="logClaim('${ap.key}')" style="border:1px solid ${th.border};background:${th.surface};color:${th.accent};font:inherit;font-weight:700;font-size:11px;border-radius:99px;padding:5px 11px;cursor:pointer;">Kør nu</button>
       <div style="text-align:right;"><div style="font-weight:800;font-size:13px;color:#1c7a4d;background:#E3F7EC;padding:3px 9px;border-radius:99px;">${ap.win}</div></div>
@@ -831,7 +841,7 @@ function viewBold(V){
   const brand=`${voltSVG(voltState(V),24,'#0C1117')}<span style="font-family:'Unbounded',sans-serif;font-weight:800;font-size:15px;color:#EAF2E9;letter-spacing:-.01em;">ELPRISER</span>`;
   const aps=V.appliances.map(ap=>`
     <div style="display:flex;align-items:center;gap:11px;background:#131A22;border:1px solid #222e38;border-radius:12px;padding:9px 12px;">
-      <span style="font-size:19px;">${ap.emoji}</span>
+      <span style="font-size:19px;width:22px;text-align:center;">${fa(APP_ICON[ap.key],'#C6FF3D')}</span>
       <div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13.5px;color:#EAF2E9;">${ap.name}</div><div style="font-size:11.5px;color:#6b7785;">${ap.when}</div></div>
       <button onclick="logClaim('${ap.key}')" style="border:1px solid ${th.border};background:${th.surface};color:${th.accent};font:inherit;font-weight:700;font-size:11px;border-radius:8px;padding:5px 10px;cursor:pointer;">Kør nu</button>
       <div style="text-align:right;"><div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;color:#C6FF3D;">${ap.win}</div></div>
@@ -864,7 +874,7 @@ function viewPlay(V){
   const brand=`<span style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:19px;color:#2a2140;">⚡ Elpriser</span>`;
   const aps=V.appliances.map(ap=>`
     <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1.5px solid #efe4f8;border-radius:14px;padding:8px 12px;">
-      <span style="font-size:20px;">${ap.emoji}</span>
+      <span style="font-size:20px;width:23px;text-align:center;">${fa(APP_ICON[ap.key],'#6C4BD8')}</span>
       <div style="flex:1;min-width:0;"><div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:13.5px;color:#2a2140;">${ap.name}</div><div style="font-size:11.5px;color:#948aa8;">${ap.when}</div></div>
       <button onclick="logClaim('${ap.key}')" style="border:1px solid ${th.border};background:${th.surface};color:${th.accent};font:inherit;font-weight:700;font-size:11px;border-radius:99px;padding:5px 11px;cursor:pointer;">Kør nu</button>
       <div style="text-align:right;"><div style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:13px;color:#fff;background:#2BC48A;padding:4px 9px;border-radius:99px;">${ap.win}</div></div>
@@ -894,16 +904,16 @@ function pointView(V){
   const g=loadGamify();
   const todayKwh=loadConsumption()[keyOf(new Date())];
   const smart = (todayKwh && V.hasToday) ? smartScore(todayKwh, V.todayList.map(x=>x.total)) : V.score;
-  const stat=(emoji,val,lbl,col)=>`<div style="flex:1;min-width:0;background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:13px 12px;display:flex;align-items:center;gap:9px;">
-    <span style="font-size:22px;">${emoji}</span>
+  const stat=(icon,val,lbl,col,icol)=>`<div style="flex:1;min-width:0;background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:13px 12px;display:flex;align-items:center;gap:9px;">
+    <span style="font-size:22px;width:24px;text-align:center;">${fa(icon,icol||th.accent)}</span>
     <div style="min-width:0;"><div style="font-weight:800;font-size:20px;color:${th.text};line-height:1;">${val}</div><div style="font-size:10.5px;font-weight:700;letter-spacing:.04em;color:${col||th.muted};margin-top:3px;">${lbl}</div></div></div>`;
   const badge=(emoji,label,active)=>`<div style="flex:1;text-align:center;background:${active?th.sheetBg:th.surface};border:1.5px ${active?'solid '+th.border:'dashed '+th.border};border-radius:16px;padding:13px 6px;${active?'':'opacity:.5;'}"><div style="font-size:24px;">${emoji}</div><div style="font-size:10.5px;font-weight:700;color:${th.muted};margin-top:4px;">${label}</div></div>`;
   return `<div class="pane">
     ${compactHeader(th,brandFor(th),gearBtn(th,th.sheetBg,app.state.theme==='bold'?'10px':'50%'))}
     <div style="display:flex;gap:8px;">
-      ${stat('🏆',g.totalPoint||0,'POINT')}
-      ${stat('🔥',(g.streak||STREAK||0),'DAGES STIME')}
-      ${stat('📊',smart,'SMART-SCORE')}
+      ${stat('trophy',g.totalPoint||0,'POINT',null,th.accent)}
+      ${stat('fire',(g.streak||STREAK||0),'DAGES STIME',null,th.pal[2])}
+      ${stat('gauge',smart,'SMART-SCORE',null,th.accent)}
     </div>
     <div style="background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:14px 16px;margin-top:12px;">
       <div style="font-size:11px;font-weight:800;letter-spacing:.06em;color:${th.muted};margin-bottom:6px;">SPAR I DAG</div>
@@ -921,14 +931,14 @@ function mereView(){
   const th=THEMES[app.state.theme];
   const now=new Date();
   const card=inner=>`<div style="background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:14px 16px;margin-top:12px;">${inner}</div>`;
-  const linkRow=(href,emoji,label,sub)=>`<a href="${href}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:12px;text-decoration:none;color:${th.text};">
-    <span style="font-size:20px;">${emoji}</span><div style="flex:1;"><div style="font-weight:700;font-size:14px;">${label}</div>${sub?`<div style="font-size:12px;color:${th.muted};">${sub}</div>`:''}</div>
+  const linkRow=(href,icon,label,sub)=>`<a href="${href}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:12px;text-decoration:none;color:${th.text};">
+    <span style="font-size:20px;width:23px;text-align:center;">${fa(icon,th.text)}</span><div style="flex:1;"><div style="font-weight:700;font-size:14px;">${label}</div>${sub?`<div style="font-size:12px;color:${th.muted};">${sub}</div>`:''}</div>
     <span style="color:${th.accent};font-weight:800;">→</span></a>`;
   return `<div class="pane">
     ${compactHeader(th,brandFor(th),gearBtn(th,th.sheetBg,app.state.theme==='bold'?'10px':'50%')+refreshBtn(th,th.sheetBg,app.state.theme==='bold'?'10px':'50%'))}
-    ${card(linkRow('https://elforbrug.nu/elpriser-og-elprisprognose-for-de-kommende-dage/','📈','Ugeprognose','7-dages elprisprognose på elforbrug.nu'))}
+    ${card(linkRow('https://elforbrug.nu/elpriser-og-elprisprognose-for-de-kommende-dage/','chart-line','Ugeprognose','7-dages elprisprognose på elforbrug.nu'))}
     <button onclick="openSettings()" style="width:100%;text-align:left;background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:14px 16px;margin-top:12px;font:inherit;cursor:pointer;color:${th.text};display:flex;align-items:center;gap:12px;">
-      <span style="font-size:20px;">⚙️</span><div style="flex:1;"><div style="font-weight:700;font-size:14px;">Indstillinger</div><div style="font-size:12px;color:${th.muted};">Tema, prisområde, netselskab, forbrug</div></div>
+      <span style="font-size:20px;width:23px;text-align:center;">${fa('gear',th.text)}</span><div style="flex:1;"><div style="font-weight:700;font-size:14px;">Indstillinger</div><div style="font-size:12px;color:${th.muted};">Tema, prisområde, netselskab, forbrug</div></div>
       <span style="color:${th.accent};font-weight:800;">→</span></button>
     ${card(`<div style="font-weight:700;font-size:14px;color:${th.text};margin-bottom:4px;">Om appen</div>
       <div style="font-size:12.5px;line-height:1.5;color:${th.muted};">Elpriser viser dagens og morgendagens spotpris inkl. afgifter, moms og dit netselskabs tarif. Forbind Eloverblik for at se dit eget forbrug. Alle data bliver på din egen enhed.</div>`)}
@@ -1010,8 +1020,8 @@ function sheetHTML(){
   const pill=(reg,label)=>{const a=app.state.region===reg;
     return `<button onclick="setRegion('${reg}')" style="flex:1;padding:12px 0;border-radius:14px;border:2px solid ${a?th.accent:th.border};background:${a?th.accentSoft:th.surface};color:${th.text};font:inherit;font-weight:700;font-size:14px;cursor:pointer;transition:all .15s;">${label}</button>`;};
   const step=(fn,sym)=>`<button onclick="${fn}" style="width:36px;height:36px;flex-shrink:0;border-radius:11px;border:1px solid ${th.border};background:${th.surface};color:${th.text};font:inherit;font-size:19px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">${sym}</button>`;
-  const apRow=(emoji,name,key,val)=>`<div style="display:flex;align-items:center;gap:12px;background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:11px 14px;">
-      <span style="font-size:20px;">${emoji}</span><span style="flex:1;font-weight:700;font-size:14px;">${name}</span>
+  const apRow=(icon,name,key,val)=>`<div style="display:flex;align-items:center;gap:12px;background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:11px 14px;">
+      <span style="font-size:20px;width:23px;text-align:center;">${fa(icon,th.text)}</span><span style="flex:1;font-weight:700;font-size:14px;">${name}</span>
       ${step(`adjAp('${key}',-1)`,'−')}<span style="min-width:38px;text-align:center;font-weight:800;font-size:15px;">${val}</span>${step(`adjAp('${key}',1)`,'+')}</div>`;
   const lbl=t=>`<div style="font-size:12px;font-weight:800;letter-spacing:.1em;color:${th.muted};margin-bottom:10px;">${t}</div>`;
   const sh=document.getElementById('sheet'); sh.style.background=th.sheetBg; sh.style.color=th.text;
@@ -1043,9 +1053,9 @@ function sheetHTML(){
       ${step('adjMarkup(-1)','−')}<span style="min-width:78px;text-align:center;font-weight:800;font-size:15px;">${app.state.markup} øre</span>${step('adjMarkup(1)','+')}</div>
     ${lbl('APPARATER — VARIGHED I TIMER')}
     <div style="display:flex;flex-direction:column;gap:9px;">
-      ${apRow('🚗','Bil — ladning','bilH',app.state.bilH)}
-      ${apRow('🍽️','Opvask','opvaskH',app.state.opvaskH)}
-      ${apRow('👕','Vasketøj','vaskH',app.state.vaskH)}
+      ${apRow(APP_ICON.bil,'Bil — ladning','bilH',app.state.bilH)}
+      ${apRow(APP_ICON.opvask,'Opvask','opvaskH',app.state.opvaskH)}
+      ${apRow(APP_ICON.vask,'Vasketøj','vaskH',app.state.vaskH)}
     </div>
     ${lbl('FORBRUGSDATA (ELOVERBLIK)')}
     ${app.state.eloverblik.refreshToken && app.state.eloverblik.meteringPointId
@@ -1121,7 +1131,7 @@ function co2Card(th, type, range){
     // Har vi forbrug men mangler CO₂ (henter), eller har vi slet ikke time-forbrug for perioden?
     const fetching=daysInRange>0;
     return `<div style="background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:14px 16px;margin-top:16px;">
-      <div style="font-size:13px;font-weight:700;color:${th.text};">🌱 Klimaaftryk</div>
+      <div style="font-size:13px;font-weight:700;color:${th.text};">${fa('leaf',th.pal[0])} Klimaaftryk</div>
       <div style="font-size:12px;color:${th.muted};margin-top:4px;line-height:1.45;">${fetching?'Henter klimaaftryk fra Energi Data Service…':'Klimaaftryk vises når der er time-forbrug for perioden.'}</div></div>`;
   }
   const kgStr=totKg<10?totKg.toFixed(2):totKg.toFixed(1);
@@ -1130,7 +1140,7 @@ function co2Card(th, type, range){
     : '';
   return `<div style="background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:14px 16px;margin-top:16px;">
     <div style="display:flex;align-items:baseline;justify-content:space-between;">
-      <span style="font-size:13px;font-weight:800;color:${th.text};">🌱 Klimaaftryk</span>
+      <span style="font-size:13px;font-weight:800;color:${th.text};">${fa('leaf',th.pal[0])} Klimaaftryk</span>
       <span style="font-weight:800;font-size:16px;color:${th.pal[0]};">${kgStr} kg CO₂</span>
     </div>
     <div style="font-size:12px;color:${th.muted};margin-top:4px;">Snit-intensitet: <strong style="color:${th.text};">${Math.round(intensity)} g/kWh</strong> · kilde: Energi Data Service</div>
