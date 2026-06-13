@@ -38,6 +38,76 @@
   .sheet{position:absolute;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:430px;
     max-height:92%;overflow-y:auto;border-radius:28px 28px 0 0;padding:10px 20px calc(env(safe-area-inset-bottom) + 28px);
     animation:slideup .28s cubic-bezier(.2,.9,.2,1)}
+
+  /* ===== VOLT MASCOT — base + statisk tilstand (altid, også reduced-motion) ===== */
+  .char{transform-box:fill-box;transform-origin:center}
+  .bolt{transform-box:fill-box;transform-origin:center}
+  .eye,.pupil{transform-box:fill-box;transform-origin:center}
+  .brow,.mouth-mad,.spark,.sparkle{opacity:0}
+  /* statisk pris-tier-udtryk (farve/ansigt) — IKKE animation, så tier er synlig uden bevægelse */
+  .cheap .bolt{fill:#34B27B}
+  .expensive .eye{transform:scaleY(.5)}
+  .expensive .mouth-happy{opacity:0}
+  .expensive .mouth-mad{opacity:1}
+  .expensive .brow{opacity:1}
+
+  /* ===== VOLT MASCOT — bevægelse (kun når brugeren tillader animation) ===== */
+  @media (prefers-reduced-motion: no-preference){
+    @keyframes blink{0%,46%,54%,100%{transform:scaleY(1)}50%{transform:scaleY(.12)}}
+    @keyframes pupilHide{0%,46%,54%,100%{opacity:1}50%{opacity:0}}
+    .blink .eye{animation:blink 4s ease-in-out infinite}
+    .blink .pupil{animation:pupilHide 4s ease-in-out infinite}
+
+    @keyframes float{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-7px) rotate(4deg)}}
+    .idle .char,.mid .char{animation:float 3s ease-in-out infinite}
+    .idle .eye,.mid .eye{animation:blink 4s ease-in-out infinite}
+    .idle .pupil,.mid .pupil{animation:pupilHide 4s ease-in-out infinite}
+
+    @keyframes hop{
+      0%,100%{transform:translateY(0) scale(1,1)}
+      15%{transform:translateY(0) scale(1.12,.85)}
+      40%{transform:translateY(-24px) scale(.9,1.15)}
+      70%{transform:translateY(0) scale(1.1,.9)}
+      85%{transform:translateY(0) scale(.98,1.02)}}
+    @keyframes glowGreen{0%,100%{filter:drop-shadow(0 0 2px rgba(52,178,123,.4))}
+      50%{filter:drop-shadow(0 0 12px rgba(52,178,123,.85))}}
+    @keyframes sparklePop{0%,100%{opacity:0;transform:scale(.4)}50%{opacity:1;transform:scale(1.1)}}
+    @keyframes cheapDance{
+      0%{transform:translateY(0) scale(1,1) rotate(0)}
+      7%{transform:translateY(0) scale(1.12,.85) rotate(0)}
+      20%{transform:translateY(-24px) scale(.9,1.15) rotate(0)}
+      33%{transform:translateY(0) scale(1.1,.9) rotate(0)}
+      44%{transform:translateY(0) scale(1) rotate(0)}
+      52%{transform:translateY(0) scale(1) rotate(0)}
+      60%{transform:translateY(0) scale(1.05) rotate(-20deg)}
+      90%{transform:translateY(0) scale(1.05) rotate(380deg)}
+      100%{transform:translateY(0) scale(1) rotate(360deg)}}
+    .cheap{animation:glowGreen 1s ease-in-out infinite}
+    .cheap .char{animation:cheapDance 2.8s ease-in-out infinite;transform-origin:center}
+    .cheap .eye{animation:blink 3.4s ease-in-out infinite}
+    .cheap .pupil{animation:pupilHide 3.4s ease-in-out infinite}
+    .cheap .sparkle{transform-box:fill-box;transform-origin:center;animation:sparklePop 1s ease-in-out infinite}
+    .cheap .sparkle:nth-of-type(2){animation-delay:.33s}
+    .cheap .sparkle:nth-of-type(3){animation-delay:.66s}
+
+    @keyframes buzz{0%,100%{transform:translate(0,0) rotate(0)}
+      20%{transform:translate(-1.8px,1px) rotate(-3deg)}
+      40%{transform:translate(1.8px,-1px) rotate(3deg)}
+      60%{transform:translate(-1.2px,-1px) rotate(-2deg)}
+      80%{transform:translate(1.2px,1px) rotate(2deg)}}
+    @keyframes zapRed{0%,100%{fill:#E5604D}40%{fill:#FF2F52}70%{fill:#ffc2cc}}
+    @keyframes glowRed{0%,100%{filter:drop-shadow(0 0 2px rgba(229,96,77,.5))}
+      50%{filter:drop-shadow(0 0 14px rgba(255,47,82,.95))}}
+    @keyframes crackle{0%,100%{opacity:0}45%{opacity:0}50%{opacity:1}55%{opacity:0}}
+    .expensive{animation:glowRed .3s ease-in-out infinite}
+    .expensive .char{animation:buzz .17s linear infinite}
+    .expensive .bolt{animation:zapRed .35s steps(1) infinite}
+
+    @keyframes charge{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+    @keyframes glowY{0%,100%{filter:drop-shadow(0 0 0 rgba(255,210,63,0))}50%{filter:drop-shadow(0 0 10px rgba(255,210,63,.95))}}
+    .charge{animation:glowY .6s ease-in-out infinite}
+    .charge .char{animation:charge .6s ease-in-out infinite}
+  }
 </style>
 </head>
 <body>
@@ -47,7 +117,7 @@
 <script type="module">
 "use strict";
 import {
-  DSO_TARIFFS, parseDK, totalOf, tierOf, loHi, bestWindow, seriesForDay
+  DSO_TARIFFS, parseDK, totalOf, tierOf, loHi, bestWindow, seriesForDay, tierClass
 } from './pricing.js';
 
 /* ===================== PRIS-MOTOR (rigtige data) ===================== */
@@ -82,6 +152,31 @@ function volt(size,stroke,withFace){
     <path d="M54 56 Q64 64 74 56" stroke="${stroke}" stroke-width="3" fill="none" stroke-linecap="round"></path>`:''}
   </svg>`;
 }
+
+/* Volt-mascot state machine — stateClass styres af CSS (se <style>), markup fra volt-animationer.html */
+function voltSVG(stateClass, size, stroke){
+  stroke = stroke || '#11352b';
+  return `<svg viewBox="0 0 120 120" class="${stateClass}" width="${size}" height="${size}" style="display:block;overflow:visible;flex-shrink:0;">
+    <path class="spark" d="M99 24 l-6 8 l5 1 l-6 9" fill="none" stroke="#FF2F52" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+    <path class="spark" d="M22 40 l7 6 l-4 3 l7 6" fill="none" stroke="#FF6B83" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+    <path class="spark" d="M92 84 l-2 9 l-5 -3 l-1 10" fill="none" stroke="#FF2F52" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+    <path class="sparkle" d="M100 22 l2 6 l6 2 l-6 2 l-2 6 l-2 -6 l-6 -2 l6 -2 z" fill="#34B27B"></path>
+    <path class="sparkle" d="M20 36 l1.6 5 l5 1.6 l-5 1.6 l-1.6 5 l-1.6 -5 l-5 -1.6 l5 -1.6 z" fill="#7CE0A8"></path>
+    <path class="sparkle" d="M90 96 l1.6 5 l5 1.6 l-5 1.6 l-1.6 5 l-1.6 -5 l-5 -1.6 l5 -1.6 z" fill="#34B27B"></path>
+    <g class="char">
+      <path class="bolt" d="M70 6 L30 62 L56 62 L46 114 L94 48 L66 48 Z" fill="#FFD23F" stroke="${stroke}" stroke-width="4.5" stroke-linejoin="round"></path>
+      <circle class="eye eye-l" cx="55" cy="44" r="8" fill="#fff" stroke="${stroke}" stroke-width="2"></circle>
+      <circle class="eye eye-r" cx="73" cy="44" r="8" fill="#fff" stroke="${stroke}" stroke-width="2"></circle>
+      <circle class="pupil pupil-l" cx="57" cy="46" r="3.4" fill="${stroke}"></circle>
+      <circle class="pupil pupil-r" cx="75" cy="46" r="3.4" fill="${stroke}"></circle>
+      <path class="mouth-mad" d="M53 60 l4.6 -5 l4.6 5 l4.6 -5 l4.6 5 l4.6 -5" stroke="${stroke}" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"></path>
+      <path class="brow brow-l" d="M47 33 L61 41" stroke="${stroke}" stroke-width="3.2" stroke-linecap="round"></path>
+      <path class="brow brow-r" d="M81 33 L67 41" stroke="${stroke}" stroke-width="3.2" stroke-linecap="round"></path>
+      <path class="mouth-happy" d="M54 56 Q64 64 74 56" stroke="${stroke}" stroke-width="3" fill="none" stroke-linecap="round"></path>
+    </g>
+  </svg>`;
+}
+function voltState(V){ return app.loading ? 'charge' : tierClass(V.nowTier); }
 
 /* ===================== APP STATE ===================== */
 const app={
