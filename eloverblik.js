@@ -42,8 +42,10 @@ export function parseTimeSeries(json){
       for(const ts of series){
         for(const per of (ts.Period || [])){
           const start = new Date(per.timeInterval.start);
-          // Day-window starts previous evening (22:00Z/23:00Z) = local midnight.
-          // VERIFICÉR mod rigtigt kald (Task 6): dayKey-udledning + tidszone.
+          // Day-window starts previous evening = local midnight: 22:00Z (sommertid) / 23:00Z (vintertid).
+          // Verificeret mod ægte Eloverblik-svar 2026-06-13: +2h nudge lander på korrekt lokal dag
+          // i begge årstider (22:00Z+2h=00:00Z, 23:00Z+2h=01:00Z — begge samme UTC-dato som lokal).
+          // Felt: out_Quantity.quantity; position 1 = første lokale time.
           const local = new Date(start.getTime() + 2*3600*1000); // nudge into local day
           const y=local.getUTCFullYear(), m=local.getUTCMonth()+1, day=local.getUTCDate();
           const dayKey = `${y}-${m}-${day}`;
