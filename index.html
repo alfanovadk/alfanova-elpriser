@@ -118,6 +118,7 @@
 import {
   DSO_TARIFFS, parseDK, totalOf, tierOf, loHi, bestWindow, seriesForDay, tierClass, componentsOf
 } from './pricing.js';
+import { getAccessToken, getMeteringPoints } from './eloverblik.js';
 
 /* ===================== PRIS-MOTOR (rigtige data) ===================== */
 const DAYS=['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'];
@@ -170,7 +171,9 @@ const app={
   state:{ theme:'soft', region:'DK1', markup:8, bilH:4, opvaskH:2, vaskH:3, chartTab:'today', settingsOpen:false,
     selectedHour:null,
     dso:'n1',
-    customTariff:{ winter:{lav:11,hoej:33,spids:99}, summer:{lav:11,hoej:17,spids:43} } },
+    customTariff:{ winter:{lav:11,hoej:33,spids:99}, summer:{lav:11,hoej:17,spids:43} },
+    eloverblik:{ refreshToken:'', meteringPointId:'', accessToken:'', accessTokenExp:0 },
+    wizardStep:0, wizardMsg:'', meteringPoints:[] },
   raw:[], loading:true, error:null
 };
 function currentTariff(){
@@ -183,10 +186,13 @@ function loadState(){
   try{ const s=JSON.parse(localStorage.getItem('elpriser_state')||'{}'); Object.assign(app.state,s);}catch(e){}
   app.state.settingsOpen=false;
   app.state.selectedHour=null;
+  app.state.wizardStep=0;
+  app.state.wizardMsg='';
+  app.state.meteringPoints=[];
 }
 function saveState(){
-  const {theme,region,markup,bilH,opvaskH,vaskH,dso,customTariff}=app.state;
-  localStorage.setItem('elpriser_state',JSON.stringify({theme,region,markup,bilH,opvaskH,vaskH,dso,customTariff}));
+  const {theme,region,markup,bilH,opvaskH,vaskH,dso,customTariff,eloverblik}=app.state;
+  localStorage.setItem('elpriser_state',JSON.stringify({theme,region,markup,bilH,opvaskH,vaskH,dso,customTariff,eloverblik}));
 }
 
 /* ===================== DATA ===================== */
@@ -528,6 +534,40 @@ function customTariffHTML(th){
     ${col('winter','Vinter')}${col('summer','Sommer')}</div>`;
 }
 
+function wizardHTML(th){
+  const step=app.state.wizardStep;
+  const msg=app.state.wizardMsg;
+  const card=inner=>`<div style="background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:16px 16px 18px;">${inner}</div>`;
+  const indicator=`<div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:${th.muted};margin-bottom:12px;">TRIN ${step+1} AF 4</div>`;
+  const pBtn=(label,fn)=>`<button onclick="${fn}" style="width:100%;margin-top:14px;padding:12px;border:none;border-radius:13px;background:${th.accent};color:${th.accentText};font:inherit;font-weight:800;font-size:14px;cursor:pointer;">${label}</button>`;
+  const para=t=>`<p style="margin:0;font-size:13.5px;line-height:1.55;color:${th.text};">${t}</p>`;
+  let body='';
+  if(step===0){
+    body=para('Hent dit eget times-forbrug fra Eloverblik, så appen kan se hvornår du faktisk bruger strøm — og belønne dig når du flytter forbrug til de billige timer. Dine data bliver på din enhed.')
+      + pBtn('Kom i gang','wizardNext()');
+  } else if(step===1){
+    body=`<div style="font-size:13.5px;line-height:1.7;color:${th.text};">
+        <div>1. Log ind på eloverblik.dk med MitID.</div>
+        <div>2. Gå til Datadeling → Opret token.</div>
+        <div>3. Kopiér hele nøglen.</div></div>
+      <a href="https://eloverblik.dk" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:14px;padding:12px;border:1px solid ${th.border};border-radius:13px;background:transparent;color:${th.text};font:inherit;font-weight:800;font-size:14px;text-decoration:none;cursor:pointer;">Åbn eloverblik.dk →</a>`
+      + pBtn('Næste','wizardNext()');
+  } else if(step===2){
+    const isErr=msg.startsWith('Fejl');
+    const msgHTML=msg?`<div style="margin-top:10px;font-size:12.5px;font-weight:600;color:${isErr?th.pal[2]:th.muted};">${msg}</div>`:'';
+    body=`<p style="margin:0 0 10px;font-size:13.5px;line-height:1.55;color:${th.text};">Indsæt din nøgle og test forbindelsen.</p>
+      <textarea id="ev-token" rows="3" placeholder="Indsæt nøgle her…" style="width:100%;box-sizing:border-box;resize:vertical;border:1px solid ${th.border};border-radius:12px;background:${th.bg};color:${th.text};font:inherit;font-size:13px;padding:10px;"></textarea>${msgHTML}`
+      + pBtn('Test forbindelse','testEloverblik()');
+  } else {
+    const mps=app.state.meteringPoints||[];
+    const items=mps.length
+      ? mps.map(m=>`<button onclick="pickMeteringPoint('${m.id}')" style="display:block;width:100%;text-align:left;margin-bottom:8px;padding:12px 14px;border:1px solid ${th.border};border-radius:13px;background:${th.bg};color:${th.text};font:inherit;font-weight:700;font-size:13.5px;cursor:pointer;">${m.label}</button>`).join('')
+      : `<div style="font-size:12.5px;color:${th.muted};">Ingen målepunkter fundet.</div>`;
+    body=`<p style="margin:0 0 12px;font-size:13.5px;line-height:1.55;color:${th.text};">Vælg det målepunkt du vil bruge.</p>${items}`;
+  }
+  return card(indicator+body);
+}
+
 function sheetHTML(){
   const th=THEMES[app.state.theme];
   const card=(key,name,desc,swatches)=>{const sel=app.state.theme===key;
@@ -576,6 +616,14 @@ function sheetHTML(){
       ${apRow('🍽️','Opvask','opvaskH',app.state.opvaskH)}
       ${apRow('👕','Vasketøj','vaskH',app.state.vaskH)}
     </div>
+    ${lbl('FORBRUGSDATA (ELOVERBLIK)')}
+    ${app.state.eloverblik.refreshToken && app.state.eloverblik.meteringPointId
+      ? `<div style="display:flex;align-items:center;gap:12px;background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:12px 14px;margin-bottom:24px;">
+           <span style="font-size:20px;">🔌</span>
+           <div style="flex:1;"><div style="font-weight:700;font-size:14px;">Forbundet</div><div style="font-size:12px;color:${th.muted};">${app.state.eloverblik.meteringPointId ? 'Målepunkt valgt' : 'Intet målepunkt'}</div></div>
+           <button onclick="disconnectEloverblik()" style="border:1px solid ${th.border};background:transparent;color:${th.text};font:inherit;font-size:12px;font-weight:700;border-radius:10px;padding:7px 12px;cursor:pointer;">Afbryd</button>
+         </div>`
+      : `<div style="margin-bottom:24px;">${wizardHTML(th)}</div>`}
     <button onclick="closeSettings()" style="width:100%;margin-top:22px;padding:14px;border:none;border-radius:16px;background:${th.accent};color:${th.accentText};font:inherit;font-weight:800;font-size:15px;cursor:pointer;">Gem &amp; luk</button>`;
 }
 
@@ -611,6 +659,41 @@ function adjCustom(seasonKey,band,d){
   app.state.customTariff[seasonKey][band]=Math.max(0,Math.min(400,v+d));
   saveState(); render();
 }
+function startWizard(){ app.state.wizardStep=0; app.state.wizardMsg=''; render(); }
+function wizardNext(){ app.state.wizardStep=Math.min(3, app.state.wizardStep+1); app.state.wizardMsg=''; render(); }
+async function testEloverblik(){
+  const ta=document.getElementById('ev-token');
+  const token=(ta && ta.value || '').trim();
+  if(!token){ app.state.wizardMsg='Fejl: indsæt din nøgle først.'; render(); return; }
+  app.state.wizardMsg='Tester forbindelse…'; render();
+  try{
+    const access=await getAccessToken(token);
+    const mps=await getMeteringPoints(access);
+    app.state.eloverblik.refreshToken=token;       // tentatively store; finalized on pick
+    app.state.eloverblik.accessToken=access;
+    app.state.eloverblik.accessTokenExp=Date.now()+23*3600*1000;
+    app.state.meteringPoints=mps;
+    app.state.wizardMsg='';
+    app.state.wizardStep=3;
+    if(mps.length===1){ pickMeteringPoint(mps[0].id); return; }
+    render();
+  }catch(e){
+    app.state.eloverblik.refreshToken='';
+    app.state.wizardMsg='Fejl: nøglen virker ikke — tjek at du fik hele teksten med.';
+    render();
+  }
+}
+function pickMeteringPoint(id){
+  app.state.eloverblik.meteringPointId=id;
+  saveState();
+  app.state.wizardStep=0; app.state.wizardMsg='';
+  render();
+}
+function disconnectEloverblik(){
+  app.state.eloverblik={ refreshToken:'', meteringPointId:'', accessToken:'', accessTokenExp:0 };
+  app.state.meteringPoints=[]; app.state.wizardStep=0; app.state.wizardMsg='';
+  saveState(); render();
+}
 function setChartTab(t){app.state.chartTab=t;app.state.selectedHour=null;render();}
 function selectHour(h){ app.state.selectedHour = (h===null || h===app.state.selectedHour) ? null : h; render(); }
 function adjMarkup(d){app.state.markup=Math.max(0,Math.min(60,app.state.markup+d));saveState();render();}
@@ -621,6 +704,8 @@ window.openSettings=openSettings;window.closeSettings=closeSettings;window.setTh
 window.setRegion=setRegion;window.setChartTab=setChartTab;window.adjMarkup=adjMarkup;window.adjAp=adjAp;
 window.setDso=setDso;window.adjCustom=adjCustom;
 window.selectHour=selectHour;
+window.startWizard=startWizard; window.wizardNext=wizardNext; window.testEloverblik=testEloverblik;
+window.pickMeteringPoint=pickMeteringPoint; window.disconnectEloverblik=disconnectEloverblik;
 window.doRefresh=doRefresh;window.load=load;
 
 /* ===================== INIT ===================== */
