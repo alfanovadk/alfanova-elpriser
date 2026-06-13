@@ -44,17 +44,15 @@
   <div id="app"><div class="skel">Henter elpriser…</div></div>
   <div id="sheet-root"><div class="sheet-back" onclick="closeSettings()"></div><div class="sheet" id="sheet"></div></div>
 
-<script>
+<script type="module">
 "use strict";
+import {
+  ELAFGIFT, ENERGINET, MOMS, DSO_TARIFFS, season, parseDK,
+  nettarif, componentsOf, totalOf, tierOf, loHi, bestWindow, seriesForDay
+} from './pricing.js';
 
 /* ===================== PRIS-MOTOR (rigtige data) ===================== */
-const ELAFGIFT=1.0, ENERGINET=14.375, MOMS=1.25; // øre/kWh inkl. moms, 2026-2027
-const N1={ winter:{lav:11,hoej:33,spids:99}, summer:{lav:11,hoej:17,spids:43} };
-const season=m=>(m>=3&&m<=8)?"summer":"winter";
-function nettarif(h,m){const s=N1[season(m)];if(h<6)return s.lav;if(h>=17&&h<21)return s.spids;return s.hoej;}
 const DAYS=['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'];
-function parseDK(s){const y=+s.slice(0,4),m=+s.slice(5,7),d=+s.slice(8,10),h=+s.slice(11,13);
-  return {y,m,d,h,monthIdx:m-1,dayKey:`${y}-${m}-${d}`,dow:new Date(y,m-1,d).getDay()};}
 function pad(n){return String(n).padStart(2,'0');}
 function kr(ore){return (ore/100).toFixed(2).replace('.',',');}
 
@@ -88,24 +86,27 @@ function volt(size,stroke,withFace){
 
 /* ===================== APP STATE ===================== */
 const app={
-  state:{ theme:'soft', region:'DK1', markup:8, bilH:4, opvaskH:2, vaskH:3, chartTab:'today', settingsOpen:false },
+  state:{ theme:'soft', region:'DK1', markup:8, bilH:4, opvaskH:2, vaskH:3, chartTab:'today', settingsOpen:false,
+    dso:'n1',
+    customTariff:{ winter:{lav:11,hoej:33,spids:99}, summer:{lav:11,hoej:17,spids:43} } },
   raw:[], loading:true, error:null
 };
+function currentTariff(){
+  return app.state.dso === 'custom'
+    ? app.state.customTariff
+    : (DSO_TARIFFS[app.state.dso] || DSO_TARIFFS.n1);
+}
+function cfg(){ return { markup: app.state.markup, tariff: currentTariff() }; }
 function loadState(){
   try{ const s=JSON.parse(localStorage.getItem('elpriser_state')||'{}'); Object.assign(app.state,s);}catch(e){}
   app.state.settingsOpen=false;
 }
 function saveState(){
-  const {theme,region,markup,bilH,opvaskH,vaskH}=app.state;
-  localStorage.setItem('elpriser_state',JSON.stringify({theme,region,markup,bilH,opvaskH,vaskH}));
+  const {theme,region,markup,bilH,opvaskH,vaskH,dso,customTariff}=app.state;
+  localStorage.setItem('elpriser_state',JSON.stringify({theme,region,markup,bilH,opvaskH,vaskH,dso,customTariff}));
 }
 
 /* ===================== DATA ===================== */
-function totalOf(rec){
-  const spot=rec.DKK_per_kWh*100*MOMS;
-  const t=parseDK(rec.time_start);
-  return spot+ENERGINET+ELAFGIFT+nettarif(t.h,t.monthIdx)+app.state.markup;
-}
 function dayURL(d){const y=d.getFullYear(),m=pad(d.getMonth()+1),day=pad(d.getDate());
   return `https://www.elprisenligenu.dk/api/v1/prices/${y}/${m}-${day}_${app.state.region}.json`;}
 async function fetchDay(d){try{const r=await fetch(dayURL(d),{cache:'no-store'});
@@ -127,25 +128,16 @@ async function load(){
 function keyOf(d){return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;}
 function seriesFor(dayKey){
   const arr=new Array(24).fill(null);
-  app.raw.forEach(r=>{const t=parseDK(r.time_start); if(t.dayKey===dayKey) arr[t.h]=totalOf(r);});
+  app.raw.forEach(r=>{const t=parseDK(r.time_start); if(t.dayKey===dayKey) arr[t.h]=totalOf(r,cfg());});
   return arr;
 }
 
 /* ===================== BEREGNINGER ===================== */
-function tierOf(p,lo,hi){if(p==null)return 0;if(hi-lo<1)return 0;const f=(p-lo)/(hi-lo);return f<.34?0:(f<.67?1:2);}
-function loHi(arr){const v=arr.filter(x=>x!=null);return [Math.min(...v),Math.max(...v)];}
 function futurePool(){
   const now=new Date(), cutoff=new Date(now.getFullYear(),now.getMonth(),now.getDate(),now.getHours());
   return app.raw.map(r=>{const t=parseDK(r.time_start);
-      return {h:t.h,dayKey:t.dayKey,dow:t.dow,total:totalOf(r),dateObj:new Date(t.y,t.monthIdx,t.d,t.h)};})
+      return {h:t.h,dayKey:t.dayKey,dow:t.dow,total:totalOf(r,cfg()),dateObj:new Date(t.y,t.monthIdx,t.d,t.h)};})
     .filter(x=>x.dateObj>=cutoff).sort((a,b)=>a.dateObj-b.dateObj);
-}
-function bestWindow(pool,len){
-  if(pool.length<len) len=pool.length||1;
-  let best=null;
-  for(let i=0;i+len<=pool.length;i++){let s=0;for(let j=0;j<len;j++)s+=pool[i+j].total;const avg=s/len;
-    if(!best||avg<best.avg)best={avg,from:pool[i],to:pool[i+len-1],len};}
-  return best;
 }
 function sameDay(r,d){return r.dayKey===keyOf(d);}
 function isTomorrow(r){const d=new Date();d.setDate(d.getDate()+1);return sameDay(r,d);}
