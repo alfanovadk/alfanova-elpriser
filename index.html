@@ -646,20 +646,27 @@ function wizardHTML(th){
   const para=t=>`<p style="margin:0;font-size:13.5px;line-height:1.55;color:${th.text};">${t}</p>`;
   let body='';
   if(step===0){
-    body=para('Hent dit eget times-forbrug fra Eloverblik, så appen kan se hvornår du faktisk bruger strøm — og belønne dig når du flytter forbrug til de billige timer. Dine data bliver på din enhed.')
+    body=para('Her henter du dit eget times-forbrug fra <strong>Eloverblik</strong> — Energinets gratis tjeneste. Så kan appen se hvornår du faktisk bruger strøm og belønne dig for at flytte forbrug til de billige timer.<br><br>Du skal bruge <strong>MitID</strong> og oprette et gratis <strong>token</strong> (en adgangsnøgle). Det tager ca. 1 minut. Dine data bliver kun på din egen enhed.')
       + pBtn('Kom i gang','wizardNext()');
   } else if(step===1){
-    body=`<div style="font-size:13.5px;line-height:1.7;color:${th.text};">
-        <div>1. Log ind på eloverblik.dk med MitID.</div>
-        <div>2. Gå til Datadeling → Opret token.</div>
-        <div>3. Kopiér hele nøglen.</div></div>
+    body=`<p style="margin:0 0 10px;font-weight:800;font-size:14px;color:${th.text};">Sådan opretter du dit token</p>
+      <div style="font-size:13px;line-height:1.5;color:${th.text};display:flex;flex-direction:column;gap:8px;">
+        <div><strong>1.</strong> Åbn <strong>eloverblik.dk</strong> og log ind med <strong>MitID</strong>.</div>
+        <div><strong>2.</strong> Klik på <strong>profil-ikonet</strong> øverst til højre.</div>
+        <div><strong>3.</strong> Vælg <strong>Datadeling</strong> i menuen.</div>
+        <div><strong>4.</strong> Klik <strong>Opret token</strong>.</div>
+        <div><strong>5.</strong> Acceptér betingelserne, giv det et navn (fx «Elpriser»), og klik <strong>Opret token</strong> igen.</div>
+        <div><strong>6.</strong> Klik <strong>Kopier til udklipsholder</strong>.</div>
+        <div><strong>7.</strong> Kom tilbage hertil og indsæt det på næste trin.</div>
+      </div>
       <a href="https://eloverblik.dk" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:14px;padding:12px;border:1px solid ${th.border};border-radius:13px;background:transparent;color:${th.text};font:inherit;font-weight:800;font-size:14px;text-decoration:none;cursor:pointer;">Åbn eloverblik.dk →</a>`
-      + pBtn('Næste','wizardNext()');
+      + pBtn('Jeg har kopieret mit token','wizardNext()');
   } else if(step===2){
     const isErr=msg.startsWith('Fejl');
     const msgHTML=msg?`<div style="margin-top:10px;font-size:12.5px;font-weight:600;color:${isErr?th.pal[2]:th.muted};">${msg}</div>`:'';
-    body=`<p style="margin:0 0 10px;font-size:13.5px;line-height:1.55;color:${th.text};">Indsæt din nøgle og test forbindelsen.</p>
-      <textarea id="ev-token" rows="3" placeholder="Indsæt nøgle her…" style="width:100%;box-sizing:border-box;resize:vertical;border:1px solid ${th.border};border-radius:12px;background:${th.bg};color:${th.text};font:inherit;font-size:13px;padding:10px;"></textarea>${msgHTML}`
+    body=`<p style="margin:0 0 4px;font-weight:800;font-size:14px;color:${th.text};">Indsæt dit token</p>
+      <p style="margin:0 0 10px;font-size:12.5px;line-height:1.5;color:${th.muted};">Den lange tekststreng du lige kopierede fra Eloverblik (Datadeling → Kopier til udklipsholder). Indsæt hele teksten her:</p>
+      <textarea id="ev-token" rows="3" placeholder="Indsæt dit Eloverblik-token her…" style="width:100%;box-sizing:border-box;resize:vertical;border:1px solid ${th.border};border-radius:12px;background:${th.bg};color:${th.text};font:inherit;font-size:13px;padding:10px;"></textarea>${msgHTML}`
       + pBtn('Test forbindelse','testEloverblik()');
   } else {
     const mps=app.state.meteringPoints||[];
@@ -770,7 +777,7 @@ function wizardNext(){ app.state.wizardStep=Math.min(3, app.state.wizardStep+1);
 async function testEloverblik(){
   const ta=document.getElementById('ev-token');
   const token=(ta && ta.value || '').trim();
-  if(!token){ app.state.wizardMsg='Fejl: indsæt din nøgle først.'; render(); return; }
+  if(!token){ app.state.wizardMsg='Fejl: indsæt dit token først.'; render(); return; }
   app.state.wizardMsg='Tester forbindelse…'; render();
   try{
     const access=await getAccessToken(token);
@@ -785,7 +792,7 @@ async function testEloverblik(){
     render();
   }catch(e){
     app.state.eloverblik.refreshToken='';
-    app.state.wizardMsg='Fejl: nøglen virker ikke — tjek at du fik hele teksten med.';
+    app.state.wizardMsg='Fejl: dit token virker ikke — tjek at du fik HELE teksten med (den er meget lang). Tokens udløber også efter et stykke tid; opret evt. et nyt.';
     render();
   }
 }
