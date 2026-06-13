@@ -129,12 +129,12 @@
 "use strict";
 import {
   DSO_TARIFFS, parseDK, totalOf, tierOf, loHi, bestWindow, seriesForDay, tierClass, componentsOf
-} from './pricing.js?v=2';
-import { getAccessToken, getMeteringPoints, getTimeSeries, parseTimeSeries, parseBuckets } from './eloverblik.js?v=2';
-import { verifyClaim, pointsFor, smartScore, badgeUpdates } from './gamify.js?v=2';
+} from './pricing.js?v=3';
+import { getAccessToken, getMeteringPoints, getTimeSeries, parseTimeSeries, parseBuckets } from './eloverblik.js?v=3';
+import { verifyClaim, pointsFor, smartScore, badgeUpdates } from './gamify.js?v=3';
 import {
   dayProfile, weekdayProfile, periodTotals, pctChange, toCSV
-} from './forbrug-analyse.js?v=2';
+} from './forbrug-analyse.js?v=3';
 
 /* ===================== PRIS-MOTOR (rigtige data) ===================== */
 const DAYS=['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'];
@@ -236,6 +236,8 @@ async function load(){
   }catch(e){ app.loading=false; app.error=e.message; }
   bumpStreak();
   render();
+  // Forbrugs-hentning er gated på stale-guard'en (se shouldRefreshConsumption) — den hitter
+  // IKKE DataHub på hvert load()/visibilitychange, kun hvis cache mangler eller er stale.
   refreshConsumption().then(verifyPending).catch(()=>{});
   fetchRecentConsumption();
 }
@@ -283,6 +285,21 @@ function loadMonthlyConsumption(){ try{ return JSON.parse(localStorage.getItem('
 function saveMonthlyConsumption(o){ try{ localStorage.setItem('elpriser_consumption_monthly', JSON.stringify(o)); }catch(e){} }
 function loadGamify(){ try{ return JSON.parse(localStorage.getItem('elpriser_gamify')||'{}'); }catch(e){ return {}; } }
 function saveGamify(g){ try{ localStorage.setItem('elpriser_gamify', JSON.stringify(g)); }catch(e){} }
+
+/* ===================== STALE-GUARD (tålmodig baggrunds-hentning) ===================== */
+// DataHub er ofte transient nede og data er kun 1-2 dage forsinket — derfor poller vi sjældent.
+// UI'et render ALTID fra cachen; en frisk hentning sker kun hvis cachen mangler eller er ældre
+// end STALE-vinduet. Sat generøst (6t) så vi ikke spammer DataHub.
+const STALE_MS = 6*3600*1000;
+function lastConsumptionFetch(){ try{ return +localStorage.getItem('elpriser_consumption_fetched')||0; }catch(e){ return 0; } }
+function markConsumptionFetched(){ try{ localStorage.setItem('elpriser_consumption_fetched', String(Date.now())); }catch(e){} }
+// Skal vi hente i baggrunden? Ja hvis cache mangler det vi har brug for, ELLER sidste succesfulde
+// hentning er ældre end STALE-vinduet. force=true (manuel «Prøv igen»/opdatér) overstyrer vinduet.
+function shouldRefreshConsumption(force, cacheMissing){
+  if(force) return true;
+  if(cacheMissing) return true;
+  return (Date.now() - lastConsumptionFetch()) > STALE_MS;
+}
 function dateFromKey(k){ const [y,m,d]=k.split('-').map(Number); return new Date(y,m-1,d); }
 function isoDate(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
@@ -299,6 +316,9 @@ async function refreshConsumption(){
   const cons=loadConsumption();
   const needed=[...new Set(pending.map(c=>c.dato).filter(d=>!cons[d]))];
   if(!needed.length) return;
+  // Stale-guard: selv med manglende claim-data venter vi STALE-vinduet mellem forsøg, så en
+  // vedvarende DataHub-nedetid ikke trigger en hentning på hvert load/visibilitychange.
+  if(!shouldRefreshConsumption(false, false)) return;
   try{
     let access=ev.accessToken;
     if(!access || Date.now()>ev.accessTokenExp){
@@ -310,12 +330,19 @@ async function refreshConsumption(){
     const json=await getTimeSeries(access, ev.meteringPointId, from, to);
     Object.assign(cons, parseTimeSeries(json));
     saveConsumption(cons);
-  }catch(e){ /* non-blocking: leave pending */ }
+    markConsumptionFetched();
+  }catch(e){ /* non-blocking: behold pending, prøv igen efter STALE-vinduet */ }
 }
 
-async function fetchRecentConsumption(){
+async function fetchRecentConsumption(force){
   const ev=app.state.eloverblik;
   if(!ev.refreshToken || !ev.meteringPointId) return;
+  // Stale-guard: spring over hvis vi har frisk data og senest hentede inden for STALE-vinduet.
+  // "needed" = de seneste par dage hvor vi mangler times-data i cachen.
+  const cons0=loadConsumption();
+  const need=[];
+  for(let i=1;i<=5;i++){ const dk=keyOf(addDays(new Date(),-i)); if(!cons0[dk]) need.push(dk); }
+  if(!shouldRefreshConsumption(force, need.length>0)) return;
   try{
     let access=ev.accessToken;
     if(!access || Date.now()>ev.accessTokenExp){
@@ -326,7 +353,9 @@ async function fetchRecentConsumption(){
     const from=isoDate(addDays(today,-5)), to=isoDate(addDays(today,1));
     const json=await getTimeSeries(access, ev.meteringPointId, from, to);
     const parsed=parseTimeSeries(json);
+    // Merge ind i cachen (overskriv ALDRIG hele objektet destruktivt) — cache er permanent.
     const cons=loadConsumption(); Object.assign(cons,parsed); saveConsumption(cons);
+    markConsumptionFetched();
     // fetch matching day prices (only days we now have consumption for and lack prices)
     const dp=loadDayPrices();
     for(const dk of Object.keys(parsed)){
@@ -339,7 +368,7 @@ async function fetchRecentConsumption(){
     }
     saveDayPrices(dp);
     render();
-  }catch(e){ /* non-blocking */ }
+  }catch(e){ /* non-blocking: behold cache, prøv igen efter STALE-vinduet (ingen tæt loop) */ }
 }
 
 /* ===================== FORBRUGS-ANALYSE ===================== */
@@ -427,27 +456,50 @@ async function fetchRange(range, agg){
       const parsed=parseBuckets(json,'Month');
       const mc=loadMonthlyConsumption(); Object.assign(mc,parsed); saveMonthlyConsumption(mc);
     }
+    markConsumptionFetched();
     return null;
-  }catch(e){ return 'Kunne ikke hente forbrug ('+e.message+'). Prøv igen.'; }
+  }catch(e){
+    // Transiente DataHub/timeout-fejl skelnes fra øvrige (auth/netværk) så UX kan være tålmodig.
+    if(e.message==='eloverblik:datahub' || e.message==='eloverblik:timeout') return 'eloverblik:transient';
+    return 'Kunne ikke hente forbrug ('+e.message+'). Prøv igen.';
+  }
+}
+
+// Har cachen ALLE buckets for en periode? (bruges til at gate baggrunds-hentning.)
+function hasCachedPeriod(type, range){
+  const { rows }=bucketsForPeriod(type, range);
+  return rows.length>0 && rows.every(r=>r.kwh!=null);
 }
 
 // Indlæs data for den valgte periode + samme periode sidste år (år-over-år). Non-blocking.
-async function loadAnalyseData(){
+// force=true (manuel «Prøv igen») overstyrer stale-guard'en.
+async function loadAnalyseData(force){
   const ev=app.state.eloverblik;
   if(!ev.refreshToken || !ev.meteringPointId) return;
   const a=app.state.analyse;
   const range=periodRange(a.periodeType, a.fromKey, a.toKey);
   const agg=aggForType(a.periodeType);
-  app.state.analyseLoading=true; app.state.analyseMsg=null; render();
+  // Cache-first: render altid fra cachen. Hent kun friskt hvis cachen mangler periodens data
+  // ELLER stale-vinduet er overskredet ELLER brugeren forcerer. Aldrig tæt auto-retry.
+  const cacheMissing=!hasCachedPeriod(a.periodeType, range);
+  if(!shouldRefreshConsumption(force, cacheMissing)){
+    app.state.analyseMsg=null;
+    if(agg==='Hour') await ensureDayPrice(isoDate(range.from));
+    render();
+    return;
+  }
+  // Vis kun en blokkerende loader når cachen er TOM for perioden; ellers render vi cache + henter stille.
+  app.state.analyseLoading=cacheMissing; app.state.analyseMsg=null; render();
   // sidste år (samme interval, et år tilbage)
   const lastYear={ from:new Date(range.from.getFullYear()-1,range.from.getMonth(),range.from.getDate()),
                    to:new Date(range.to.getFullYear()-1,range.to.getMonth(),range.to.getDate()) };
   const e1=await fetchRange(range, agg);
   const e2=await fetchRange(lastYear, agg);   // YoY — fejler stille hvis ingen historik
   app.state.analyseLoading=false;
-  // Fejl er ikke-blokkerende: forbrugView render fra cache. Vis kun en diskret note
-  // hvis primær-periodens hentning fejlede (token udløbet, netværk, osv.).
-  app.state.analyseMsg = e1 ? 'Kunne ikke opdatere — tjek din Eloverblik-forbindelse.' : null;
+  // Fejl er ikke-blokkerende: forbrugView render fra cache. Vis en diskret, tålmodig note.
+  app.state.analyseMsg = e1==='eloverblik:transient'
+      ? 'Eloverbliks system svarer langsomt lige nu — viser dine seneste hentede tal. Prøver igen senere.'
+      : (e1 ? 'Kunne ikke opdatere — tjek din Eloverblik-forbindelse.' : null);
   // hent dag-priser til tier-farvning når perioden er en enkelt dag (Hour)
   if(agg==='Hour' && !e1){ await ensureDayPrice(isoDate(range.from)); }
   render();
@@ -1053,7 +1105,7 @@ function forbrugView(){
 
   if(app.state.analyseLoading){
     return `<div class="pane">${head}${picker}${nav}
-      <div class="skel" style="padding:40px 0;">${voltSVG('charge',56,th.text)}<div style="margin-top:12px;">Henter dit forbrug…</div></div></div>`;
+      <div class="skel" style="padding:40px 20px;">${voltSVG('charge',56,th.text)}<div style="margin-top:14px;line-height:1.5;">Henter dit forbrug fra Eloverblik — det kan tage et øjeblik (deres system er nogle gange langsomt)…</div></div></div>`;
   }
 
   // Render fra cachen uanset om en frisk hentning lykkedes. Kun når der INTET er i
@@ -1061,10 +1113,13 @@ function forbrugView(){
   const hasData=rows.some(r=>r.kwh!=null);
   if(!hasData){
     const failed=!!app.state.analyseMsg;
-    const msg=failed
-      ? 'Kunne ikke hente dit forbrug — tjek din Eloverblik-forbindelse.'
-      : 'Ingen forbrugsdata for denne periode endnu (data er typisk 1-2 dage forsinket).';
-    const retry=failed?`<button onclick="loadAnalyseData()" style="margin-top:14px;padding:11px 22px;border:none;border-radius:13px;background:${th.accent};color:${th.accentText};font:inherit;font-weight:800;font-size:13.5px;cursor:pointer;">Prøv igen</button>`:'';
+    const transient=app.state.analyseMsg && app.state.analyseMsg.indexOf('langsomt')>=0;
+    const msg=transient
+      ? 'Eloverbliks system svarer langsomt lige nu — vi henter dit forbrug så snart det er tilgængeligt.'
+      : failed
+        ? 'Kunne ikke hente dit forbrug — tjek din Eloverblik-forbindelse.'
+        : 'Ingen forbrugsdata for denne periode endnu (data er typisk 1-2 dage forsinket).';
+    const retry=failed?`<button onclick="loadAnalyseData(true)" style="margin-top:14px;padding:11px 22px;border:none;border-radius:13px;background:${th.accent};color:${th.accentText};font:inherit;font-weight:800;font-size:13.5px;cursor:pointer;">Prøv igen</button>`:'';
     return `<div class="pane">${head}${picker}${nav}${a.periodeType==='custom'?custom:''}
       <div style="background:${th.surface};border:1px solid ${th.border};border-radius:18px;padding:22px 18px;margin-top:18px;text-align:center;color:${th.muted};font-size:13.5px;line-height:1.5;">${esc(msg)}${retry}</div></div>`;
   }
@@ -1332,7 +1387,13 @@ function selectHour(h){ app.state.selectedHour = (h===null || h===app.state.sele
 function adjMarkup(d){app.state.markup=Math.max(0,Math.min(60,app.state.markup+d));saveState();render();}
 function adjAp(key,d){const lim={bilH:[1,12],opvaskH:[1,6],vaskH:[1,6]}[key];
   app.state[key]=Math.max(lim[0],Math.min(lim[1],app.state[key]+d));saveState();render();}
-function doRefresh(btn){if(btn){btn.classList.add('spin');setTimeout(()=>btn.classList.remove('spin'),700);}load();}
+function doRefresh(btn){
+  if(btn){btn.classList.add('spin');setTimeout(()=>btn.classList.remove('spin'),700);}
+  // Manuel opdatering forcerer en forbrugs-hentning forbi stale-guard'en.
+  load();
+  fetchRecentConsumption(true);
+  if(app.state.tab==='forbrug') loadAnalyseData(true);
+}
 function logClaim(apparat){
   const V=app.lastV; if(!V) return;
   const now=new Date();

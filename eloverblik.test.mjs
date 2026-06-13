@@ -51,6 +51,30 @@ test('parseBuckets: Day → {dayKey: total} med ét bucket pr. dag', () => {
   assert.ok(Object.values(out).includes(12.5));
 });
 
+// Ægte Day-aggregering fra DataHub: ÉN Period pr. dag, hver med ét Point på position 1.
+// (verificeret mod rigtigt svar 2026-06-13). parseBuckets SKAL iterere ALLE Periods og
+// nøgle hver efter sin egen Period.timeInterval.start — ikke kun Period[0].
+const DAY_MULTI_PERIOD_FIXTURE = { result: [ { MyEnergyData_MarketDocument: { TimeSeries: [ { Period: [
+  { resolution: 'P1D', timeInterval: { start: '2026-05-31T22:00:00Z', end: '2026-06-01T22:00:00Z' },
+    Point: [ { position: '1', 'out_Quantity.quantity': '12.5' } ] },
+  { resolution: 'P1D', timeInterval: { start: '2026-06-01T22:00:00Z', end: '2026-06-02T22:00:00Z' },
+    Point: [ { position: '1', 'out_Quantity.quantity': '8.0' } ] },
+  { resolution: 'P1D', timeInterval: { start: '2026-06-02T22:00:00Z', end: '2026-06-03T22:00:00Z' },
+    Point: [ { position: '1', 'out_Quantity.quantity': '10.25' } ] },
+] } ] } } ] };
+
+test('parseBuckets: Day med MANGE Periods (én pr. dag) → ét bucket pr. dag, korrekt nøglet', () => {
+  const out = parseBuckets(DAY_MULTI_PERIOD_FIXTURE, 'Day');
+  const keys = Object.keys(out).sort();
+  assert.equal(keys.length, 3);
+  // hver Period nøgles efter sin EGEN start (+2h nudge → lokal dag)
+  assert.equal(out['2026-6-1'], 12.5);
+  assert.equal(out['2026-6-2'], 8.0);
+  assert.equal(out['2026-6-3'], 10.25);
+  const total = Object.values(out).reduce((a,b)=>a+b,0);
+  assert.ok(Math.abs(total - 30.75) < 1e-9);
+});
+
 const MONTH_FIXTURE = { result: [ { MyEnergyData_MarketDocument: { TimeSeries: [ { Period: [ {
   resolution: 'P1M',
   timeInterval: { start: '2025-12-31T23:00:00Z', end: '2026-03-31T22:00:00Z' },

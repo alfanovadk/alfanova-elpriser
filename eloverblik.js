@@ -1,10 +1,55 @@
 // eloverblik.js — Eloverblik CustomerApi-klient. CORS-verificeret (origin *), ingen proxy.
+// DataHub (Eloverbliks backend) er ofte transient nede ("DataHub unavailable") og svarer
+// langsomt. Klienten er derfor tålmodig (lange timeouts) og skelner DataHub-fejl fra auth-fejl,
+// så kalderne kan beholde cache + retry sjældent i stedet for at fejle hårdt.
 const BASE = 'https://api.eloverblik.dk/customerapi/api';
+const DEFAULT_TIMEOUT = 60000;   // DataHub kan være langsom — vent længe før vi giver op
+const RETRY_DELAY = 4000;        // afstand mellem interne retries (spam ikke DataHub)
+const MAX_RETRIES = 2;           // antal ekstra forsøg ud over det første
 
-async function call(url, opts){
-  const r = await fetch(url, opts);
-  if(!r.ok) throw new Error('eloverblik:'+r.status);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Skelner transiente DataHub/timeout-fejl (behold cache, prøv igen senere) fra auth-fejl.
+function isTransient(err){
+  const m = err && err.message;
+  return m === 'eloverblik:datahub' || m === 'eloverblik:timeout';
+}
+
+async function call(url, opts, timeoutMs = DEFAULT_TIMEOUT){
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  let r;
+  try {
+    r = await fetch(url, { ...opts, signal: ac.signal });
+  } catch(e){
+    if(e && e.name === 'AbortError') throw new Error('eloverblik:timeout');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+  if(!r.ok){
+    // DataHub-nedbrud kommer typisk som 5xx med "DataHub" i body — behandl som transient.
+    let body = '';
+    try { body = await r.text(); } catch(e){}
+    if(/DataHub/i.test(body)) throw new Error('eloverblik:datahub');
+    throw new Error('eloverblik:'+r.status);
+  }
   return r.json();
+}
+
+// Kør fn med let intern retry KUN på transiente fejl (datahub/timeout) — aldrig på auth/401.
+async function withRetry(fn){
+  let lastErr;
+  for(let attempt = 0; attempt <= MAX_RETRIES; attempt++){
+    try {
+      return await fn();
+    } catch(e){
+      lastErr = e;
+      if(!isTransient(e) || attempt === MAX_RETRIES) throw e;
+      await sleep(RETRY_DELAY);
+    }
+  }
+  throw lastErr;
 }
 
 // Veksl langlivet refresh-token til 24t data-access-token.
@@ -15,7 +60,7 @@ export async function getAccessToken(refreshToken){
 }
 
 export async function getMeteringPoints(accessToken){
-  const j = await call(`${BASE}/meteringpoints/meteringpoints`, { headers:{ Authorization:`Bearer ${accessToken}` } });
+  const j = await withRetry(() => call(`${BASE}/meteringpoints/meteringpoints`, { headers:{ Authorization:`Bearer ${accessToken}` } }));
   const list = (j && j.result) || [];
   return list.map(m => ({
     id: m.meteringPointId,
@@ -25,11 +70,11 @@ export async function getMeteringPoints(accessToken){
 
 // aggregation: 'Hour' | 'Day' | 'Month' (Eloverblik gettimeseries-segment).
 export async function getTimeSeries(accessToken, mpId, fromISO, toISO, aggregation='Hour'){
-  return call(`${BASE}/meterdata/gettimeseries/${fromISO}/${toISO}/${aggregation}`, {
+  return withRetry(() => call(`${BASE}/meterdata/gettimeseries/${fromISO}/${toISO}/${aggregation}`, {
     method:'POST',
     headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
     body: JSON.stringify({ meteringPoints:{ meteringPoint:[mpId] } })
-  });
+  }));
 }
 
 // Map CIM-dokument → { dayKey: number[24] } (kWh pr. time, index = position-1).
