@@ -457,7 +457,12 @@ async function ensureAccess(){
 async function fetchRange(range, agg){
   const ev=app.state.eloverblik;
   if(!ev.refreshToken || !ev.meteringPointId) return 'Forbind Eloverblik først.';
-  const from=isoDate(range.from), to=isoDate(addDays(range.to,1)); // til eksklusiv → +1 dag
+  // Eloverblik afviser (400) forespørgsler hvis til-datoen rækker ind i fremtiden.
+  // Cap til eksklusiv slutning til i morgen; spring helt over hvis perioden er fremtidig.
+  const tomorrow=addDays(new Date(),1);
+  if(range.from > tomorrow) return null; // perioden er i fremtiden — ingen data endnu
+  let toDate=addDays(range.to,1); if(toDate>tomorrow) toDate=tomorrow;
+  const from=isoDate(range.from), to=isoDate(toDate); // til eksklusiv
   try{
     const access=await ensureAccess();
     const json=await getTimeSeries(access, ev.meteringPointId, from, to, agg);
