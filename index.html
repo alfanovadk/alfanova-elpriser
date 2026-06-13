@@ -116,7 +116,7 @@
 <script type="module">
 "use strict";
 import {
-  DSO_TARIFFS, parseDK, totalOf, tierOf, loHi, bestWindow, seriesForDay, tierClass
+  DSO_TARIFFS, parseDK, totalOf, tierOf, loHi, bestWindow, seriesForDay, tierClass, componentsOf
 } from './pricing.js';
 
 /* ===================== PRIS-MOTOR (rigtige data) ===================== */
@@ -168,6 +168,7 @@ function voltState(V){ return app.loading ? 'charge' : tierClass(V.nowTier); }
 /* ===================== APP STATE ===================== */
 const app={
   state:{ theme:'soft', region:'DK1', markup:8, bilH:4, opvaskH:2, vaskH:3, chartTab:'today', settingsOpen:false,
+    selectedHour:null,
     dso:'n1',
     customTariff:{ winter:{lav:11,hoej:33,spids:99}, summer:{lav:11,hoej:17,spids:43} } },
   raw:[], loading:true, error:null
@@ -181,6 +182,7 @@ function cfg(){ return { markup: app.state.markup, tariff: currentTariff() }; }
 function loadState(){
   try{ const s=JSON.parse(localStorage.getItem('elpriser_state')||'{}'); Object.assign(app.state,s);}catch(e){}
   app.state.settingsOpen=false;
+  app.state.selectedHour=null;
 }
 function saveState(){
   const {theme,region,markup,bilH,opvaskH,vaskH,dso,customTariff}=app.state;
@@ -289,7 +291,8 @@ function chartHTML(list,th,nowH,opts){
     const h=Math.max(7,Math.round(p/max*100));
     const col=th.pal[tierOf(p,lo,hi)];
     const isNow=hr===nowH;
-    return `<div class="bar" title="kl ${pad(hr)}:00 · ${kr(p)} kr" style="flex:1 1 0;min-width:0;height:${h}%;background:${col};border-radius:5px 5px 2px 2px;position:relative;${isNow?'box-shadow:0 0 0 2.5px '+th.ring+';':''}">${isNow?`<span style="position:absolute;top:-15px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:800;letter-spacing:.04em;color:${th.ring}">NU</span>`:''}</div>`;
+    const isSel=hr===app.state.selectedHour;
+    return `<div class="bar" onclick="selectHour(${hr})" title="kl ${pad(hr)}:00 · ${kr(p)} kr" style="flex:1 1 0;min-width:0;height:${h}%;background:${col};border-radius:5px 5px 2px 2px;position:relative;cursor:pointer;${isNow?'box-shadow:0 0 0 2.5px '+th.ring+';':''}${isSel?'outline:2px solid '+th.ring+';outline-offset:1px;':''}">${isNow?`<span style="position:absolute;top:-15px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:800;letter-spacing:.04em;color:${th.ring}">NU</span>`:''}</div>`;
   }).join('');
   return `<div><div style="display:flex;align-items:flex-end;gap:${gap}px;height:${H}px;padding-top:14px;">${bars}</div>
     <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10px;font-weight:600;color:${th.axis};">
@@ -315,6 +318,35 @@ function ringHTML(list,th,nowH){
     <div style="position:absolute;inset:24%;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:20px;box-shadow:0 10px 30px rgba(108,75,216,.18);">
       <div style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:30px;color:#2a2140;line-height:1;">${kr(centerVal)}</div>
       <div style="font-size:11px;font-weight:700;color:#948aa8;">kr/kWh</div></div></div>`;
+}
+function selectedRecord(V){
+  if(app.state.selectedHour==null) return null;
+  const tmr=new Date(); tmr.setDate(tmr.getDate()+1);
+  const dayKey = V.chartList===V.tmrList ? keyOf(tmr) : keyOf(new Date());
+  return app.raw.find(r=>{const t=parseDK(r.time_start); return t.dayKey===dayKey && t.h===app.state.selectedHour;}) || null;
+}
+function detailHTML(V,th){
+  const rec=selectedRecord(V);
+  if(!rec) return '';
+  const c=componentsOf(rec,cfg());
+  const h=app.state.selectedHour;
+  const [lo,hi]=loHi(V.chartList.map(x=>x.total));
+  const tier=tierOf(c.total,lo,hi);
+  const tierTxt=['Billig','Middel','Dyr'][tier];
+  const row=(label,val)=>`<div style="display:flex;justify-content:space-between;font-size:12.5px;color:${th.muted};padding:3px 0;"><span>${label}</span><span style="color:${th.text};font-weight:600;">${kr(val)} kr</span></div>`;
+  return `<div class="pane" style="margin-top:14px;background:${th.surface};border:1px solid ${th.border};border-radius:18px;padding:16px;">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;">
+      <div><span style="font-weight:800;font-size:15px;color:${th.text};">kl ${pad(h)}:00–${pad((h+1)%24)}:00</span>
+        <span style="margin-left:8px;font-size:11px;font-weight:800;color:${th.pal[tier]};">${tierTxt}</span></div>
+      <button onclick="selectHour(null)" aria-label="Luk" style="border:none;background:transparent;color:${th.muted};font-size:16px;cursor:pointer;padding:0;">✕</button>
+    </div>
+    <div style="font-family:'Fredoka',sans-serif;font-weight:700;font-size:30px;color:${th.text};margin-bottom:10px;">${kr(c.total)} <span style="font-size:13px;font-weight:700;color:${th.muted};">kr/kWh</span></div>
+    ${row('Spotpris (inkl. moms)',c.spot)}
+    ${row('Elafgift',c.elafgift)}
+    ${row('Energinet-tarif',c.energinet)}
+    ${row('Nettarif',c.nettarif)}
+    ${row('Elhandler-tillæg',c.markup)}
+  </div>`;
 }
 function tabsHTML(th){
   const t=th.tab;
@@ -374,6 +406,7 @@ function viewSoft(V){
       <div style="max-width:180px;margin-bottom:14px;">${tabsHTML(th)}</div>
       ${chartHTML(V.chartList,th,V.chartNowH)}
       ${legend(th)}
+      ${detailHTML(V,th)}
     </div>
     <div style="background:#11352b;border-radius:22px;padding:18px;margin-top:16px;color:#eafff4;">
       <div style="display:flex;align-items:center;gap:12px;"><span style="font-size:26px;">🔥</span>
@@ -410,6 +443,7 @@ function viewBold(V){
         <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13px;color:#7E8C99;letter-spacing:.12em;">24 TIMER</span>
         <div style="width:160px;">${tabsHTML(th)}</div></div>
       ${chartHTML(V.chartList,th,V.chartNowH,{h:150,gap:3})}
+      ${detailHTML(V,th)}
     </div>
     <h3 style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;color:#7E8C99;letter-spacing:.14em;margin:24px 0 12px;">HVORNÅR SKAL VI TÆNDE FOR…</h3>
     <div style="display:flex;flex-direction:column;gap:8px;">${aps}</div>
@@ -451,6 +485,7 @@ function viewPlay(V){
         ${V.chartList.length?`<div style="position:absolute;left:50%;top:26px;transform:translateX(-50%);">${voltSVG(voltState(V),58,'#2a2140')}</div>`:''}
       </div>
       <p style="text-align:center;font-size:13px;color:#6b6480;margin:6px 0 14px;line-height:1.45;">Volt siger: ${V.nowTier===0?'<strong style="color:#2BC48A;">tænd nu!</strong> Billigt indtil kl. '+V.cheapEnd+' 🎉':'<strong style="color:#FF5470;">vent lidt</strong> — billigst kl. '+V.cheapUntil+' 🙂'}</p>
+      ${detailHTML(V,th)}
     </div>
     <h3 style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:16px;color:#2a2140;margin:22px 0 12px;">Dagens opgaver 🎯</h3>
     <div style="display:flex;flex-direction:column;gap:10px;">${aps}</div>
@@ -561,7 +596,8 @@ function adjCustom(seasonKey,band,d){
   app.state.customTariff[seasonKey][band]=Math.max(0,Math.min(400,v+d));
   saveState(); render();
 }
-function setChartTab(t){app.state.chartTab=t;render();}
+function setChartTab(t){app.state.chartTab=t;app.state.selectedHour=null;render();}
+function selectHour(h){ app.state.selectedHour = (h===null || h===app.state.selectedHour) ? null : h; render(); }
 function adjMarkup(d){app.state.markup=Math.max(0,Math.min(60,app.state.markup+d));saveState();render();}
 function adjAp(key,d){const lim={bilH:[1,12],opvaskH:[1,6],vaskH:[1,6]}[key];
   app.state[key]=Math.max(lim[0],Math.min(lim[1],app.state[key]+d));saveState();render();}
@@ -569,6 +605,7 @@ function doRefresh(btn){if(btn){btn.classList.add('spin');setTimeout(()=>btn.cla
 window.openSettings=openSettings;window.closeSettings=closeSettings;window.setTheme=setTheme;
 window.setRegion=setRegion;window.setChartTab=setChartTab;window.adjMarkup=adjMarkup;window.adjAp=adjAp;
 window.setDso=setDso;window.adjCustom=adjCustom;
+window.selectHour=selectHour;
 window.doRefresh=doRefresh;window.load=load;
 
 /* ===================== INIT ===================== */
