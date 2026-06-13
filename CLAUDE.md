@@ -42,18 +42,21 @@ Statisk site på **GreenGeeks** (shared hosting). Deploy = rsync af statiske fil
 
 - **SSH:** bruger `alfanova`, origin-IP `107.6.136.42` (domænet er Cloudflare-proxied,
   så brug origin-IP til SSH/rsync — ikke DNS-opslaget).
-- **Sti:** `public_html/elpriser.damsgaard-bruhn.dk/`
+- **Sti:** `public_html/i-stoedet.alfanova.dk/` (subdomæne på samme GreenGeeks-konto;
+  apex `alfanova.dk` bor IKKE her — det er på ug-sites/Caddy. Gammelt domæne
+  `elpriser.damsgaard-bruhn.dk/` er udfaset.)
 - **Filer der skal med:** `index.html`, `pricing.js`, `gamify.js`, `eloverblik.js`,
-  `sw.js`, `manifest.webmanifest`, `icon-192.png`, `icon-512.png`,
-  `apple-touch-icon.png`, `favicon.ico`, `robots.txt` (IKKE `docs/`, `node_modules/`,
-  `package.json`, `*.test.mjs`, `.git`).
+  `forbrug-analyse.js`, `co2.js`, `sw.js`, `manifest.webmanifest`, `icon-192.png`,
+  `icon-512.png`, `apple-touch-icon.png`, `favicon.ico`, `robots.txt`
+  (IKKE `docs/`, `node_modules/`, `package.json`, `*.test.mjs`, `.git`).
+  **NB:** `forbrug-analyse.js` + `co2.js` er importerede moduler — glemmer du dem,
+  hænger appen i "Henter elpriser…".
 
 ```
-rsync -avz --exclude='.git' --exclude='docs' --exclude='node_modules' \
-  --exclude='*.test.mjs' --exclude='package.json' \
-  index.html pricing.js gamify.js eloverblik.js sw.js manifest.webmanifest \
-  *.png favicon.ico robots.txt \
-  alfanova@107.6.136.42:public_html/elpriser.damsgaard-bruhn.dk/
+rsync -avz \
+  index.html pricing.js gamify.js eloverblik.js forbrug-analyse.js co2.js sw.js \
+  manifest.webmanifest icon-192.png icon-512.png apple-touch-icon.png favicon.ico robots.txt \
+  alfanova@107.6.136.42:public_html/i-stoedet.alfanova.dk/
 ```
 
 ### Cloudflare cacher .js i 1 år — HARD RULE ved JS-ændringer
@@ -66,15 +69,15 @@ hænger i "Henter elpriser…".
 
 **Reglen:** Når du ændrer en `.js`-modulfil, SKAL du cache-buste importen.
 Modul-importerne i `index.html` har en `?v=N`-query (pricing/eloverblik/gamify/
-forbrug-analyse). **Bump N i ALLE fire imports ved enhver `.js`-ændring** før deploy —
+forbrug-analyse/co2). **Bump N i ALLE fem imports ved enhver `.js`-ændring** før deploy —
 da `index.html` er frisk, henter den nye `?v=N`-URL en frisk fil fra origin (CF-MISS).
 
-Alternativ/supplement: purge Cloudflare-cachen (token i `~/.claude/CLAUDE.local.md`,
-1Password "Cloudflare API Token - UG3" — bekræft at den dækker damsgaard-bruhn.dk-zonen
-før du regner med den; ellers er `?v=N`-bump den pålidelige vej).
+Alternativ/supplement: purge Cloudflare-cachen. Token: 1Password "Cloudflare API Token
+- UG3" i vault **udstillerguide-v3** (verificeret dækker `alfanova.dk`-zonen,
+zone-id `c3b2ce74fdc6b37a121e98267bf4fba9`). Write-ops udløser CF-godkendelses-hook.
 
 **HARD RULE — verificér live efter deploy** (jf. global CLAUDE.md): åbn
-`https://elpriser.damsgaard-bruhn.dk` i en FRISK browser med cache-bust (`?cb=<ts>`),
+`https://i-stoedet.alfanova.dk` i en FRISK browser med cache-bust (`?cb=<ts>`),
 bekræft at appen loader (ikke hænger i "Henter elpriser…"), tjek console for
 import-fejl, inspicér visuelt desktop + 390px. Tag screenshot OG læs det.
 
