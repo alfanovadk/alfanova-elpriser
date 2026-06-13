@@ -1,3 +1,4 @@
 # Build-artefakt (zip af PWA-filerne)
 elpriser-pwa.zip
 .DS_Store
+node_modules

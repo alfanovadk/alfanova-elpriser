@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Volt — animationer</title>
+<style>
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    background:#F3FAF6;color:#11352b;padding:32px 20px 60px;}
+  h1{font-size:22px;margin:0 0 6px;}
+  p.sub{color:#7c8a83;margin:0 0 24px;font-size:14px;}
+  .hero{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;max-width:620px;margin:0 0 26px;}
+  .hero .card svg{width:140px;height:140px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:18px;max-width:900px;}
+  .card{background:#fff;border:1px solid #e3ede8;border-radius:20px;padding:18px 14px 16px;
+    text-align:center;box-shadow:0 8px 24px -18px rgba(17,53,43,.5);}
+  .card svg{display:block;margin:4px auto 10px;width:96px;height:96px;overflow:visible;}
+  .name{font-weight:800;font-size:14px;}
+  .ctx{font-size:11.5px;color:#7c8a83;margin-top:3px;line-height:1.4;}
+  .controls{max-width:900px;margin:0 0 22px;}
+  button{font:inherit;font-weight:700;font-size:13px;border:1px solid #cfe0d7;background:#fff;
+    color:#11352b;border-radius:99px;padding:8px 16px;cursor:pointer;}
+  button.dark{background:#11352b;color:#fff;border-color:#11352b;}
+
+  .char{transform-box:fill-box;transform-origin:center}
+  .bolt{transform-box:fill-box;transform-origin:center}
+  .eye,.pupil{transform-box:fill-box;transform-origin:center}
+  .brow,.mouth-mad,.spark,.sparkle{opacity:0}
+
+  /* ===== BLINK ===== */
+  @keyframes blink{0%,46%,54%,100%{transform:scaleY(1)}50%{transform:scaleY(.12)}}
+  @keyframes pupilHide{0%,46%,54%,100%{opacity:1}50%{opacity:0}}
+  .blink .eye{animation:blink 4s ease-in-out infinite}
+  .blink .pupil{animation:pupilHide 4s ease-in-out infinite}
+
+  /* ===== IDLE / MIDDEL: gul, rolig — svæv + blink ===== */
+  @keyframes float{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-7px) rotate(4deg)}}
+  .idle .char,.mid .char{animation:float 3s ease-in-out infinite}
+  .idle .eye,.mid .eye{animation:blink 4s ease-in-out infinite}
+  .idle .pupil,.mid .pupil{animation:pupilHide 4s ease-in-out infinite}
+
+  /* ===== BILLIGT: grøn, glad, HELE figuren hopper + ✨ ===== */
+  @keyframes hop{
+    0%,100%{transform:translateY(0) scale(1,1)}
+    15%{transform:translateY(0) scale(1.12,.85)}
+    40%{transform:translateY(-24px) scale(.9,1.15)}
+    70%{transform:translateY(0) scale(1.1,.9)}
+    85%{transform:translateY(0) scale(.98,1.02)}}
+  @keyframes glowGreen{0%,100%{filter:drop-shadow(0 0 2px rgba(52,178,123,.4))}
+    50%{filter:drop-shadow(0 0 12px rgba(52,178,123,.85))}}
+  @keyframes sparklePop{0%,100%{opacity:0;transform:scale(.4)}50%{opacity:1;transform:scale(1.1)}}
+  /* hopper først, spinner så — skiftevis i ét loop */
+  @keyframes cheapDance{
+    0%{transform:translateY(0) scale(1,1) rotate(0)}
+    7%{transform:translateY(0) scale(1.12,.85) rotate(0)}
+    20%{transform:translateY(-24px) scale(.9,1.15) rotate(0)}
+    33%{transform:translateY(0) scale(1.1,.9) rotate(0)}
+    44%{transform:translateY(0) scale(1) rotate(0)}
+    52%{transform:translateY(0) scale(1) rotate(0)}
+    60%{transform:translateY(0) scale(1.05) rotate(-20deg)}
+    90%{transform:translateY(0) scale(1.05) rotate(380deg)}
+    100%{transform:translateY(0) scale(1) rotate(360deg)}}
+  .cheap{animation:glowGreen 1s ease-in-out infinite}
+  .cheap .char{animation:cheapDance 2.8s ease-in-out infinite;transform-origin:center}
+  .cheap .bolt{fill:#34B27B}
+  .cheap .eye{animation:blink 3.4s ease-in-out infinite}
+  .cheap .pupil{animation:pupilHide 3.4s ease-in-out infinite}
+  .cheap .sparkle{transform-box:fill-box;transform-origin:center;animation:sparklePop 1s ease-in-out infinite}
+  .cheap .sparkle:nth-of-type(2){animation-delay:.33s}
+  .cheap .sparkle:nth-of-type(3){animation-delay:.66s}
+
+  /* ===== DYRT: rød, ARRIG, ryster + elektriske gnister ===== */
+  @keyframes buzz{0%,100%{transform:translate(0,0) rotate(0)}
+    20%{transform:translate(-1.8px,1px) rotate(-3deg)}
+    40%{transform:translate(1.8px,-1px) rotate(3deg)}
+    60%{transform:translate(-1.2px,-1px) rotate(-2deg)}
+    80%{transform:translate(1.2px,1px) rotate(2deg)}}
+  @keyframes zapRed{0%,100%{fill:#E5604D}40%{fill:#FF2F52}70%{fill:#ffc2cc}}
+  @keyframes glowRed{0%,100%{filter:drop-shadow(0 0 2px rgba(229,96,77,.5))}
+    50%{filter:drop-shadow(0 0 14px rgba(255,47,82,.95))}}
+  @keyframes crackle{0%,100%{opacity:0}45%{opacity:0}50%{opacity:1}55%{opacity:0}}
+  .expensive{animation:glowRed .3s ease-in-out infinite}
+  .expensive .char{animation:buzz .17s linear infinite}
+  .expensive .bolt{animation:zapRed .35s steps(1) infinite}
+  .expensive .eye{transform:scaleY(.5)}          /* arrigt skævende blik */
+  .expensive .mouth-happy{opacity:0}
+  .expensive .mouth-mad{opacity:1}               /* sammenbidte tænder */
+  .expensive .brow{opacity:1}                    /* vrede bryn */
+
+  /* ===== CHARGE: loading ===== */
+  @keyframes charge{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+  @keyframes glowY{0%,100%{filter:drop-shadow(0 0 0 rgba(255,210,63,0))}50%{filter:drop-shadow(0 0 10px rgba(255,210,63,.95))}}
+  .charge{animation:glowY .6s ease-in-out infinite}
+  .charge .char{animation:charge .6s ease-in-out infinite}
+
+  /* ===== CHEER SPIN: badge unlock ===== */
+  @keyframes cheer{0%{transform:rotate(0) scale(1)}35%{transform:rotate(-18deg) scale(1.05)}
+    70%{transform:rotate(380deg) scale(1.05)}100%{transform:rotate(360deg) scale(1)}}
+  .cheer .char{animation:cheer 1.1s cubic-bezier(.4,1.4,.5,1) infinite}
+
+  /* ===== WINK ===== */
+  @keyframes tilt{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
+  @keyframes winkOne{0%,40%,60%,100%{transform:scaleY(1)}50%{transform:scaleY(.12)}}
+  .wink .char{animation:tilt 2.4s ease-in-out infinite}
+  .wink .eye-r{animation:winkOne 2.4s ease-in-out infinite}
+  .wink .pupil-r{animation:pupilHide 2.4s ease-in-out infinite}
+</style>
+</head>
+<body>
+<h1>⚡ Volt — animationer</h1>
+<p class="sub">Alt kører automatisk. De tre store matcher pris-tilstandene: grøn = billig · gul = middel · rød = dyr.</p>
+<div class="controls">
+  <button class="dark" onclick="document.body.classList.toggle('dark-bg')">Skift baggrund (mørkt tema)</button>
+</div>
+
+<div class="hero" id="hero"></div>
+<div class="grid" id="grid"></div>
+
+<script>
+function voltSVG(stateClass){
+  return `<svg viewBox="0 0 120 120" class="${stateClass}">
+    <!-- elektriske gnister (kun ved 'dyrt') -->
+    <path class="spark" d="M99 24 l-6 8 l5 1 l-6 9" fill="none" stroke="#FF2F52" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path class="spark" d="M22 40 l7 6 l-4 3 l7 6" fill="none" stroke="#FF6B83" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path class="spark" d="M92 84 l-2 9 l-5 -3 l-1 10" fill="none" stroke="#FF2F52" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- glade gnister (kun ved 'billigt') -->
+    <path class="sparkle" d="M100 22 l2 6 l6 2 l-6 2 l-2 6 l-2 -6 l-6 -2 l6 -2 z" fill="#34B27B"/>
+    <path class="sparkle" d="M20 36 l1.6 5 l5 1.6 l-5 1.6 l-1.6 5 l-1.6 -5 l-5 -1.6 l5 -1.6 z" fill="#7CE0A8"/>
+    <path class="sparkle" d="M90 96 l1.6 5 l5 1.6 l-5 1.6 l-1.6 5 l-1.6 -5 l-5 -1.6 l5 -1.6 z" fill="#34B27B"/>
+    <!-- selve figuren (hopper/ryster som én enhed) -->
+    <g class="char">
+      <path class="bolt" d="M70 6 L30 62 L56 62 L46 114 L94 48 L66 48 Z" fill="#FFD23F" stroke="#11352b" stroke-width="4.5" stroke-linejoin="round"/>
+      <circle class="eye eye-l" cx="55" cy="44" r="8" fill="#fff" stroke="#11352b" stroke-width="2"/>
+      <circle class="eye eye-r" cx="73" cy="44" r="8" fill="#fff" stroke="#11352b" stroke-width="2"/>
+      <circle class="pupil pupil-l" cx="57" cy="46" r="3.4" fill="#11352b"/>
+      <circle class="pupil pupil-r" cx="75" cy="46" r="3.4" fill="#11352b"/>
+      <!-- arrig: sammenbidte tænder + vrede bryn (kun ved 'dyrt') -->
+      <path class="mouth-mad" d="M53 60 l4.6 -5 l4.6 5 l4.6 -5 l4.6 5 l4.6 -5" stroke="#11352b" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path class="brow brow-l" d="M47 33 L61 41" stroke="#11352b" stroke-width="3.2" stroke-linecap="round"/>
+      <path class="brow brow-r" d="M81 33 L67 41" stroke="#11352b" stroke-width="3.2" stroke-linecap="round"/>
+      <!-- glad mund (default) -->
+      <path class="mouth-happy" d="M54 56 Q64 64 74 56" stroke="#11352b" stroke-width="3" fill="none" stroke-linecap="round"/>
+    </g>
+  </svg>`;
+}
+const hero=[
+  ['cheap','Billig — glad hop','grøn · “tænd nu!” 🎉'],
+  ['mid','Middel — rolig','gul · neutral'],
+  ['expensive','Dyr — arrig & elektrisk','rød · “vent!” ⚡'],
+];
+const anims=[
+  ['idle','Idle: svæv + blink','Standard hviletilstand'],
+  ['blink','Blink','Din original, ren ro'],
+  ['charge','Charge','Når priser hentes'],
+  ['cheer','Cheer spin','Badge låst op 🎉'],
+  ['wink','Wink','Legende (play-tema)'],
+];
+document.getElementById('hero').innerHTML=hero.map(([c,name,ctx])=>
+  `<div class="card">${voltSVG(c)}<div class="name">${name}</div><div class="ctx">${ctx}</div></div>`).join('');
+document.getElementById('grid').innerHTML=anims.map(([c,name,ctx])=>
+  `<div class="card">${voltSVG(c)}<div class="name">${name}</div><div class="ctx">${ctx}</div></div>`).join('');
+</script>
+<style>
+  body.dark-bg{background:#0C1117;color:#EAF2E9}
+  body.dark-bg .card{background:#131A22;border-color:#26323d}
+  body.dark-bg .ctx{color:#7E8C99}
+  body.dark-bg .name{color:#EAF2E9}
+</style>
+</body>
+</html>
