@@ -243,6 +243,22 @@ function bumpStreak(){
   }catch(e){STREAK=1;}
 }
 
+function loadClaims(){ try{ return JSON.parse(localStorage.getItem('elpriser_claims')||'[]'); }catch(e){ return []; } }
+function saveClaims(arr){ try{ localStorage.setItem('elpriser_claims', JSON.stringify(arr)); }catch(e){} }
+
+function claimsHTML(th){
+  const today=loadClaims().filter(c=>c.dato===keyOf(new Date()));
+  if(!today.length) return '';
+  const emo={bil:'🚗',opvask:'🍽️',vask:'👕'};
+  const chip=s=> s==='confirmed'?`<span style="color:#2BC48A;font-weight:700;">✓ bekræftet</span>`
+    : s==='unconfirmed'?`<span style="color:${th.muted};">ikke bekræftet</span>`
+    : `<span style="color:${th.muted};">afventer data</span>`;
+  const rows=today.map(c=>`<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:4px 0;">
+    <span>${emo[c.apparat]||'⚡'}</span><span style="flex:1;color:${th.text};">kl ${pad(c.startHour)}</span>${chip(c.status)}</div>`).join('');
+  return `<div style="background:${th.surface};border:1px solid ${th.border};border-radius:16px;padding:12px 14px;margin-top:12px;">
+    <div style="font-weight:800;font-size:12px;letter-spacing:.06em;color:${th.muted};margin-bottom:6px;">DINE MARKERINGER I DAG</div>${rows}</div>`;
+}
+
 function computeView(){
   const now=new Date(), nowH=now.getHours();
   const todayList=seriesForDay(app.raw, keyOf(now), cfg());
@@ -266,13 +282,13 @@ function computeView(){
 
   const pool=futurePool();
   const dayAvg=todayVals.length?todayVals.reduce((a,b)=>a+b,0)/todayVals.length:0;
-  const mkAp=(emoji,name,verb,len,kwh)=>{const w=bestWindow(pool,len);
+  const mkAp=(key,emoji,name,verb,len,kwh)=>{const w=bestWindow(pool,len);
     const saveKr=Math.max(0,(dayAvg-(w?w.avg:dayAvg))/100*kwh);
-    return {emoji,name,sub:len+' timers '+verb,win:winStr(w),when:whenText(w),price:kr(w?w.avg:0),save:saveKr.toFixed(0)};};
+    return {key,emoji,name,sub:len+' timers '+verb,win:winStr(w),when:whenText(w),price:kr(w?w.avg:0),save:saveKr.toFixed(0)};};
   const appliances=[
-    mkAp('🚗','Elbilen','ladning',app.state.bilH,KWH.bil),
-    mkAp('🍽️','Opvask','program',app.state.opvaskH,KWH.opvask),
-    mkAp('👕','Vasketøj','program',app.state.vaskH,KWH.vask)
+    mkAp('bil','🚗','Elbilen','ladning',app.state.bilH,KWH.bil),
+    mkAp('opvask','🍽️','Opvask','program',app.state.opvaskH,KWH.opvask),
+    mkAp('vask','👕','Vasketøj','program',app.state.vaskH,KWH.vask)
   ];
   const savedToday=Math.round(appliances.reduce((a,b)=>a+(+b.save),0));
   const score=hasToday?Math.round(Math.max(0,Math.min(100,(peak-nowTotal)/Math.max(1,peak-loT)*100))):0;
@@ -408,7 +424,8 @@ function viewSoft(V){
   const aps=V.appliances.map(ap=>`
     <div style="display:flex;align-items:center;gap:13px;background:#fff;border:1px solid #e3ede8;border-radius:18px;padding:13px 15px;">
       <span style="width:42px;height:42px;border-radius:13px;background:#EAF6F0;display:flex;align-items:center;justify-content:center;font-size:21px;">${ap.emoji}</span>
-      <div style="flex:1;"><div style="font-weight:700;font-size:15px;color:#11352b;">${ap.name}</div><div style="font-size:12px;color:#7c8a83;">${ap.when}</div></div>
+      <div style="flex:1;"><div style="font-weight:700;font-size:15px;color:#11352b;">${ap.name}</div><div style="font-size:12px;color:#7c8a83;">${ap.when}</div>
+        <button onclick="logClaim('${ap.key}')" style="margin-top:6px;border:1px solid ${th.border};background:${th.surface};color:${th.accent};font:inherit;font-weight:700;font-size:11px;border-radius:99px;padding:5px 10px;cursor:pointer;">Kør nu</button></div>
       <div style="text-align:right;"><div style="font-weight:800;font-size:14px;color:#1c7a4d;background:#E3F7EC;padding:4px 10px;border-radius:99px;">${ap.win}</div><div style="font-size:11px;color:#7c8a83;margin-top:3px;">≈ ${ap.price} kr/kWh</div></div>
     </div>`).join('');
   return `<div class="pane">
@@ -422,6 +439,7 @@ function viewSoft(V){
     </div>
     <h3 style="font-family:'Fredoka',sans-serif;font-weight:600;font-size:17px;color:#11352b;margin:24px 0 12px;">Hvornår skal vi tænde for…</h3>
     <div style="display:flex;flex-direction:column;gap:9px;">${aps}</div>
+    ${claimsHTML(th)}
     <div style="background:#fff;border:1px solid #e3ede8;border-radius:22px;padding:16px 16px 14px;margin-top:20px;">
       <div style="font-family:'Fredoka',sans-serif;font-weight:600;font-size:15px;color:#11352b;margin-bottom:12px;">Pris pr. time</div>
       <div style="max-width:180px;margin-bottom:14px;">${tabsHTML(th)}</div>
@@ -444,7 +462,8 @@ function viewBold(V){
   const aps=V.appliances.map(ap=>`
     <div style="display:flex;align-items:center;gap:13px;background:#131A22;border:1px solid #222e38;border-radius:14px;padding:13px 15px;">
       <span style="font-size:22px;">${ap.emoji}</span>
-      <div style="flex:1;"><div style="font-weight:700;font-size:15px;color:#EAF2E9;">${ap.name}</div><div style="font-size:12px;color:#6b7785;">${ap.when}</div></div>
+      <div style="flex:1;"><div style="font-weight:700;font-size:15px;color:#EAF2E9;">${ap.name}</div><div style="font-size:12px;color:#6b7785;">${ap.when}</div>
+        <button onclick="logClaim('${ap.key}')" style="margin-top:6px;border:1px solid ${th.border};background:${th.surface};color:${th.accent};font:inherit;font-weight:700;font-size:11px;border-radius:8px;padding:5px 10px;cursor:pointer;">Kør nu</button></div>
       <div style="text-align:right;"><div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#C6FF3D;">${ap.win}</div><div style="font-size:11px;color:#6b7785;">${ap.price} kr</div></div>
     </div>`).join('');
   const cheapTag=V.nowTier===0?`↓ til ${V.cheapEnd}`:`billigst ${V.cheapUntil}`;
@@ -468,6 +487,7 @@ function viewBold(V){
     </div>
     <h3 style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;color:#7E8C99;letter-spacing:.14em;margin:24px 0 12px;">HVORNÅR SKAL VI TÆNDE FOR…</h3>
     <div style="display:flex;flex-direction:column;gap:8px;">${aps}</div>
+    ${claimsHTML(th)}
     <div style="display:flex;gap:10px;margin-top:16px;">
       <div style="flex:1;background:#131A22;border:1px solid #222e38;border-radius:14px;padding:14px;">
         <div style="font-size:11px;font-weight:700;color:#7E8C99;letter-spacing:.08em;">SPAR I DAG</div>
@@ -486,7 +506,8 @@ function viewPlay(V){
   const aps=V.appliances.map(ap=>`
     <div style="display:flex;align-items:center;gap:13px;background:#fff;border:1.5px solid #efe4f8;border-radius:18px;padding:12px 14px;">
       <span style="width:44px;height:44px;border-radius:14px;background:#F3ECFF;display:flex;align-items:center;justify-content:center;font-size:22px;">${ap.emoji}</span>
-      <div style="flex:1;"><div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:15px;color:#2a2140;">${ap.name}</div><div style="font-size:12px;color:#948aa8;">${ap.when}</div></div>
+      <div style="flex:1;"><div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:15px;color:#2a2140;">${ap.name}</div><div style="font-size:12px;color:#948aa8;">${ap.when}</div>
+        <button onclick="logClaim('${ap.key}')" style="margin-top:6px;border:1px solid ${th.border};background:${th.surface};color:${th.accent};font:inherit;font-weight:700;font-size:11px;border-radius:99px;padding:5px 10px;cursor:pointer;">Kør nu</button></div>
       <div style="text-align:right;"><div style="font-family:'Baloo 2',sans-serif;font-weight:800;font-size:15px;color:#fff;background:#2BC48A;padding:5px 11px;border-radius:99px;">${ap.win}</div><div style="font-size:11px;color:#948aa8;margin-top:3px;">spar ~${ap.save} kr</div></div>
     </div>`).join('');
   const nat=V.appliances[0].win!=='—' && (+V.appliances[0].win.slice(0,2))<6;
@@ -510,6 +531,7 @@ function viewPlay(V){
     </div>
     <h3 style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:16px;color:#2a2140;margin:22px 0 12px;">Dagens opgaver 🎯</h3>
     <div style="display:flex;flex-direction:column;gap:10px;">${aps}</div>
+    ${claimsHTML(th)}
     <h3 style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:16px;color:#2a2140;margin:22px 0 12px;">Badges</h3>
     <div style="display:flex;gap:10px;">${badge('🌙','Natteravn',nat)}${badge('💰','Sparefugl',spar)}${badge(V.streak>=30?'⭐':'🔒',V.streak>=30?'30 dage':(30-V.streak)+' dage',V.streak>=30)}</div>
     ${footer(th)}</div>`;
@@ -641,6 +663,7 @@ function render(){
       <button onclick="load()" style="margin-top:14px;padding:12px 22px;border:none;border-radius:14px;background:${th.accent};color:${th.accentText};font:inherit;font-weight:800;cursor:pointer;">Prøv igen</button></div>`;
   } else {
     const V=computeView();
+    app.lastV=V;
     root.innerHTML = app.state.theme==='bold'?viewBold(V):(app.state.theme==='play'?viewPlay(V):viewSoft(V));
   }
   const sr=document.getElementById('sheet-root');
@@ -700,6 +723,17 @@ function adjMarkup(d){app.state.markup=Math.max(0,Math.min(60,app.state.markup+d
 function adjAp(key,d){const lim={bilH:[1,12],opvaskH:[1,6],vaskH:[1,6]}[key];
   app.state[key]=Math.max(lim[0],Math.min(lim[1],app.state[key]+d));saveState();render();}
 function doRefresh(btn){if(btn){btn.classList.add('spin');setTimeout(()=>btn.classList.remove('spin'),700);}load();}
+function logClaim(apparat){
+  const V=app.lastV; if(!V) return;
+  const now=new Date();
+  const varighed={bil:app.state.bilH,opvask:app.state.opvaskH,vask:app.state.vaskH}[apparat]||1;
+  const id=`${keyOf(now)}-${apparat}-${now.getHours()}`;
+  const claim={ id, apparat, dato:keyOf(now), startHour:now.getHours(), varighed, tierVedStart:V.nowTier, status:'pending', point:0 };
+  const claims=loadClaims().filter(c=>c.id!==id);
+  claims.push(claim); saveClaims(claims);
+  render();
+}
+window.logClaim=logClaim;
 window.openSettings=openSettings;window.closeSettings=closeSettings;window.setTheme=setTheme;
 window.setRegion=setRegion;window.setChartTab=setChartTab;window.adjMarkup=adjMarkup;window.adjAp=adjAp;
 window.setDso=setDso;window.adjCustom=adjCustom;
