@@ -23,7 +23,6 @@
     -webkit-font-smoothing:antialiased}
   #app{max-width:430px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 10px) 20px calc(env(safe-area-inset-bottom) + 32px);position:relative;min-height:100vh}
   button{font-family:inherit}
-  @keyframes voltbob{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-7px) rotate(4deg)}}
   @keyframes slideup{0%{transform:translateY(100%)}100%{transform:translateY(0)}}
   @keyframes fadein{0%{opacity:0}100%{opacity:1}}
   @keyframes pop{0%{opacity:0;transform:translateY(6px)}100%{opacity:1;transform:translateY(0)}}
@@ -140,18 +139,6 @@ const THEMES={
     pal:['#2BC48A','#FFB020','#FF5470'], ring:'#6C4BD8', axis:'rgba(42,33,64,.4)',
     tab:{track:'#EFEBFB',on:'#6C4BD8',onText:'#fff',off:'#9a8fc7'} }
 };
-
-/* Volt-mascot */
-function volt(size,stroke,withFace){
-  const f=withFace!==false;
-  return `<svg viewBox="0 0 120 120" width="${size}" height="${size}" style="display:block;animation:voltbob 3s ease-in-out infinite;flex-shrink:0;">
-    <path d="M70 6 L30 62 L56 62 L46 114 L94 48 L66 48 Z" fill="#FFD23F" stroke="${stroke}" stroke-width="4.5" stroke-linejoin="round"></path>
-    ${f?`<circle cx="55" cy="44" r="8" fill="#fff" stroke="${stroke}" stroke-width="2"></circle>
-    <circle cx="73" cy="44" r="8" fill="#fff" stroke="${stroke}" stroke-width="2"></circle>
-    <circle cx="57" cy="46" r="3.4" fill="${stroke}"></circle><circle cx="75" cy="46" r="3.4" fill="${stroke}"></circle>
-    <path d="M54 56 Q64 64 74 56" stroke="${stroke}" stroke-width="3" fill="none" stroke-linecap="round"></path>`:''}
-  </svg>`;
-}
 
 /* Volt-mascot state machine — stateClass styres af CSS (se <style>), markup fra volt-animationer.html */
 function voltSVG(stateClass, size, stroke){
@@ -378,7 +365,7 @@ function viewSoft(V){
         <div style="display:inline-flex;align-items:center;gap:6px;background:#E3F7EC;color:${bcol};font-weight:800;font-size:12px;letter-spacing:.04em;padding:5px 11px;border-radius:99px;">${btxt}</div>
         <div style="display:flex;align-items:baseline;gap:6px;margin-top:12px;"><span style="font-family:'Fredoka',sans-serif;font-weight:700;font-size:52px;line-height:.9;color:#11352b;">${V.nowKr}</span><span style="font-weight:700;font-size:15px;color:#6b7d74;">kr/kWh</span></div>
         <p style="margin:12px 0 0;font-size:13.5px;line-height:1.5;color:#46554d;">${nowCopy(V)}</p>
-      </div>${volt(78,'#11352b')}
+      </div>${voltSVG(voltState(V),78,'#11352b')}
     </div>
     <h3 style="font-family:'Fredoka',sans-serif;font-weight:600;font-size:17px;color:#11352b;margin:24px 0 12px;">Hvornår skal vi tænde for…</h3>
     <div style="display:flex;flex-direction:column;gap:9px;">${aps}</div>
@@ -398,7 +385,7 @@ function viewSoft(V){
 
 function viewBold(V){
   const th=THEMES.bold;
-  const brand=`${volt(26,'#0C1117',false)}<span style="font-family:'Unbounded',sans-serif;font-weight:800;font-size:16px;color:#EAF2E9;letter-spacing:-.01em;">ELPRISER</span>`;
+  const brand=`${voltSVG(voltState(V),26,'#0C1117')}<span style="font-family:'Unbounded',sans-serif;font-weight:800;font-size:16px;color:#EAF2E9;letter-spacing:-.01em;">ELPRISER</span>`;
   const pill=`<span style="font-size:11px;font-weight:800;color:#C6FF3D;border:1px solid #2c3a2a;padding:6px 11px;border-radius:8px;">${V.regionShort}</span>`;
   const aps=V.appliances.map(ap=>`
     <div style="display:flex;align-items:center;gap:13px;background:#131A22;border:1px solid #222e38;border-radius:14px;padding:13px 15px;">
@@ -412,7 +399,7 @@ function viewBold(V){
     <div style="position:relative;overflow:hidden;background:radial-gradient(120% 90% at 80% 0%, #1c2a16 0%, #0f1620 55%);border:1px solid #25313c;border-radius:26px;padding:22px 20px 20px;">
       <div style="display:flex;align-items:center;justify-content:space-between;">
         <span style="font-family:'Unbounded',sans-serif;font-weight:900;font-size:13px;color:#C6FF3D;letter-spacing:.1em;">${V.nowTier===0?'BILLIGT NU':(V.nowTier===1?'MIDDEL NU':'DYRT NU')}</span>
-        ${volt(46,'#0C1117')}
+        ${voltSVG(voltState(V),46,'#0C1117')}
       </div>
       <div style="font-family:'Unbounded',sans-serif;font-weight:900;font-size:76px;line-height:.82;color:#EAF2E9;margin:14px 0 0;letter-spacing:-.04em;">${V.nowKr}</div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:6px;"><span style="font-weight:800;font-size:14px;color:#7E8C99;">kr / kWh</span>
@@ -461,11 +448,7 @@ function viewPlay(V){
     <div style="background:#fff;border:1.5px solid #efe4f8;border-radius:26px;padding:20px 16px 8px;box-shadow:0 14px 34px -22px rgba(108,75,216,.6);">
       <div style="max-width:170px;margin:0 auto 14px;">${tabsHTML(th)}</div>
       <div style="position:relative;">${ringHTML(V.chartList,th,V.chartNowH)}
-        ${V.chartList.length?`<svg viewBox="0 0 120 120" width="58" height="58" style="position:absolute;left:50%;top:26px;transform:translateX(-50%);animation:voltbob 3s ease-in-out infinite;">
-          <path d="M70 6 L30 62 L56 62 L46 114 L94 48 L66 48 Z" fill="#FFD23F" stroke="#2a2140" stroke-width="5" stroke-linejoin="round"></path>
-          <circle cx="55" cy="44" r="8" fill="#fff" stroke="#2a2140" stroke-width="2"></circle><circle cx="73" cy="44" r="8" fill="#fff" stroke="#2a2140" stroke-width="2"></circle>
-          <circle cx="57" cy="46" r="3.4" fill="#2a2140"></circle><circle cx="75" cy="46" r="3.4" fill="#2a2140"></circle>
-          <path d="M54 56 Q64 64 74 56" stroke="#2a2140" stroke-width="3" fill="none" stroke-linecap="round"></path></svg>`:''}
+        ${V.chartList.length?`<div style="position:absolute;left:50%;top:26px;transform:translateX(-50%);">${voltSVG(voltState(V),58,'#2a2140')}</div>`:''}
       </div>
       <p style="text-align:center;font-size:13px;color:#6b6480;margin:6px 0 14px;line-height:1.45;">Volt siger: ${V.nowTier===0?'<strong style="color:#2BC48A;">tænd nu!</strong> Billigt indtil kl. '+V.cheapEnd+' 🎉':'<strong style="color:#FF5470;">vent lidt</strong> — billigst kl. '+V.cheapUntil+' 🙂'}</p>
     </div>
@@ -552,7 +535,7 @@ function render(){
   document.body.style.background=th.bg;
   document.getElementById('theme-color').setAttribute('content',th.bg);
   const root=document.getElementById('app');
-  if(app.loading){root.innerHTML='<div class="skel">Henter elpriser…</div>';return;}
+  if(app.loading){root.innerHTML=`<div class="skel">${voltSVG('charge',72,th.text)}<div style="margin-top:14px;">Henter elpriser…</div></div>`;return;}
   if(app.error){
     root.innerHTML=`<div style="padding:40px 6px;text-align:center;color:${th.text};">
       <div style="font-size:40px;margin-bottom:10px;">⚡</div>
