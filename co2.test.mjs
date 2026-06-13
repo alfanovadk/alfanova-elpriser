@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCO2, co2Url } from './co2.js';
+import { parseCO2, co2Url, dailyAvgCO2 } from './co2.js';
 
 test('co2Url: bygger dataset-URL med filter + lokal-tid-grænser', () => {
   const u = co2Url('DK1', '2026-06-13', '2026-06-14');
@@ -46,4 +46,21 @@ test('parseCO2: ignorerer ufuldstændige records', () => {
 test('parseCO2: tomt/null input → tomt objekt', () => {
   assert.deepEqual(parseCO2([]), {});
   assert.deepEqual(parseCO2(null), {});
+});
+
+test('dailyAvgCO2: snit over timer med værdi (>0)', () => {
+  // dag med 24 timer, 2 timer á 100 og 2 timer á 200, resten 0 → snit (over de 4 >0) = 150
+  const arr = [100, 100, 200, 200, ...Array(20).fill(0)];
+  const out = dailyAvgCO2({ '2026-6-1': arr });
+  assert.ok(Math.abs(out['2026-6-1'] - 150) < 1e-9);
+});
+
+test('dailyAvgCO2: dag uden positive timer → 0', () => {
+  const out = dailyAvgCO2({ '2026-6-1': Array(24).fill(0) });
+  assert.equal(out['2026-6-1'], 0);
+});
+
+test('dailyAvgCO2: tomt/null input → tomt objekt', () => {
+  assert.deepEqual(dailyAvgCO2({}), {});
+  assert.deepEqual(dailyAvgCO2(null), {});
 });

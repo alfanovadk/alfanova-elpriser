@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   aggregateByDay, aggregateByMonth, dayProfile, weekdayProfile,
   periodTotals, pctChange, tierSplit, toCSV, weekdayOf, monthKeyOf,
-  co2Footprint, avgIntensity,
+  co2Footprint, avgIntensity, co2FootprintDaily,
 } from './forbrug-analyse.js';
 
 test('aggregateByDay: summerer time-arrays pr. dag', () => {
@@ -184,4 +184,37 @@ test('avgIntensity: forbrugs-vægtet snit', () => {
 test('avgIntensity: nul forbrug → 0 (ingen division-med-0)', () => {
   assert.equal(avgIntensity([0, 0], [100, 200]), 0);
   assert.equal(avgIntensity(null, null), 0);
+});
+
+test('co2FootprintDaily: Σ dags-forbrug × dag-snit-CO₂ → kg + vægtet snit', () => {
+  const kwh = { '2026-6-1': 10, '2026-6-2': 20 };
+  const co2 = { '2026-6-1': 100, '2026-6-2': 200 };  // g/kWh
+  // (10*100 + 20*200)/1000 = 1 + 4 = 5 kg
+  const r = co2FootprintDaily(kwh, co2, ['2026-6-1', '2026-6-2']);
+  assert.ok(Math.abs(r.kg - 5) < 1e-9);
+  assert.equal(r.days, 2);
+  // vægtet snit: 5000 g / 30 kWh = 166.67 g/kWh
+  assert.ok(Math.abs(r.gPerKwh - 5000 / 30) < 1e-9);
+});
+
+test('co2FootprintDaily: springer dage uden begge datakilder over', () => {
+  const kwh = { '2026-6-1': 10, '2026-6-2': 20, '2026-6-3': 5 };
+  const co2 = { '2026-6-1': 100 };   // kun dag 1 har CO₂
+  const r = co2FootprintDaily(kwh, co2, ['2026-6-1', '2026-6-2', '2026-6-3']);
+  assert.ok(Math.abs(r.kg - 1) < 1e-9);  // kun 10*100/1000
+  assert.equal(r.days, 1);
+});
+
+test('co2FootprintDaily: dayKeys default = alle forbrugs-dage', () => {
+  const kwh = { '2026-6-1': 10 };
+  const co2 = { '2026-6-1': 50 };
+  const r = co2FootprintDaily(kwh, co2);
+  assert.ok(Math.abs(r.kg - 0.5) < 1e-9);
+});
+
+test('co2FootprintDaily: tomt input → 0 (ingen division-med-0)', () => {
+  const r = co2FootprintDaily({}, {}, []);
+  assert.equal(r.kg, 0);
+  assert.equal(r.gPerKwh, 0);
+  assert.equal(r.days, 0);
 });

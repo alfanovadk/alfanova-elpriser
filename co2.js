@@ -37,6 +37,18 @@ export function parseCO2(records){
   return out;
 }
 
+// { dayKey: number[24] } → { dayKey: gPerKwh } (døgnets gennemsnitlige CO₂-intensitet).
+// Simpelt snit over de timer der har en værdi (>0); en dag med 0 timer → 0. Bruges til
+// dag-niveau-approksimationen for Måned/Kvartal/År hvor vi kun har dags-forbrug.
+export function dailyAvgCO2(hourlyByDay){
+  const out = {};
+  for(const [dk, arr] of Object.entries(hourlyByDay || {})){
+    const list = (Array.isArray(arr) ? arr : []).filter(v => +v > 0);
+    out[dk] = list.length ? list.reduce((a, b) => a + (+b || 0), 0) / list.length : 0;
+  }
+  return out;
+}
+
 // Hent CO2Emis for [fromISO, toISO) (eksklusiv toISO) for et prisområde, aggregeret til timer.
 // Returnerer { dayKey: number[24] }. Kaster ved netværks-/HTTP-fejl (kalderen beholder cache).
 export async function fetchCO2(priceArea, fromISO, toISO){

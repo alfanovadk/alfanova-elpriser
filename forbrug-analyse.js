@@ -109,6 +109,26 @@ export function co2Footprint(hourlyKwh, hourlyCo2){
   return g / 1000;   // gram → kg
 }
 
+// CO₂-aftryk på DAG-niveau for et fler-dages interval (approksimation):
+// Σ over dage ( dailyKwh[day] × dailyAvgCo2[day] / 1000 ) → kg CO₂, samt vægtet snit-intensitet.
+// Bruges for Måned/Kvartal/År hvor vi kun har dags-totaler (ikke time-opløsning).
+// Tæller kun dage hvor BÅDE forbrug OG CO₂-snit findes (ingen fabrikerede tal). Returnerer
+// { kg, gPerKwh, days } — days = antal dage der bidrog. Manglende dage springes helt over.
+export function co2FootprintDaily(dailyKwhMap, dailyCo2Map, dayKeys){
+  const kwhMap = dailyKwhMap || {}, co2Map = dailyCo2Map || {};
+  const keys = dayKeys || Object.keys(kwhMap);
+  let totKg = 0, totKwh = 0, days = 0;
+  for(const dk of keys){
+    const kwh = kwhMap[dk], g = co2Map[dk];
+    if(kwh == null || g == null) continue;
+    const k = +kwh || 0, intensity = +g || 0;
+    totKg += k * intensity / 1000;
+    totKwh += k;
+    days += 1;
+  }
+  return { kg: totKg, gPerKwh: totKwh ? (totKg * 1000) / totKwh : 0, days };
+}
+
 // Forbrugs-vægtet gennemsnits-intensitet (g/kWh) for ét døgn. Uden forbrug → 0.
 export function avgIntensity(hourlyKwh, hourlyCo2){
   const kwh = hourlyKwh || [], co2 = hourlyCo2 || [];
