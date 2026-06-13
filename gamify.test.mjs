@@ -1,8 +1,33 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { verifyClaim, pointsFor, smartScore, badgeUpdates } from './gamify.js';
+import { verifyClaim, pointsFor, smartScore, badgeUpdates, claimActiveAt, claimEndHour } from './gamify.js';
 
 const flat = v => Array(24).fill(v);
+
+test('claimActiveAt: aktivt inden for vinduet [start, start+varighed)', () => {
+  const claim = { dato:'2026-6-14', startHour:14, varighed:4 };
+  assert.equal(claimActiveAt(claim, '2026-6-14', 14), true);  // start
+  assert.equal(claimActiveAt(claim, '2026-6-14', 17), true);  // sidste aktive time
+  assert.equal(claimActiveAt(claim, '2026-6-14', 18), false); // slut er eksklusiv
+  assert.equal(claimActiveAt(claim, '2026-6-14', 13), false); // før
+});
+
+test('claimActiveAt: kun samme dag', () => {
+  const claim = { dato:'2026-6-14', startHour:14, varighed:4 };
+  assert.equal(claimActiveAt(claim, '2026-6-15', 15), false);
+});
+
+test('claimActiveAt: brøk-varighed afrundes ned på time-grænsen', () => {
+  const claim = { dato:'2026-6-14', startHour:14, varighed:1.5 };
+  assert.equal(claimActiveAt(claim, '2026-6-14', 14), true);   // 14 < 15.5
+  assert.equal(claimActiveAt(claim, '2026-6-14', 15), true);   // 15 < 15.5
+  assert.equal(claimActiveAt(claim, '2026-6-14', 16), false);  // 16 ≥ 15.5
+});
+
+test('claimEndHour: start + varighed, cappet til 24', () => {
+  assert.equal(claimEndHour({ startHour:14, varighed:4 }), 18);
+  assert.equal(claimEndHour({ startHour:22, varighed:4 }), 24);
+});
 
 test('verifyClaim: bekræftet når forbrug forhøjet i vinduet og i billig tier', () => {
   const kwh = flat(0.1); kwh[2]=2.0; kwh[3]=2.0;

@@ -8,6 +8,17 @@ function windowHours(claim){
   return h;
 }
 
+// Er et claim stadig «tændt» på (dayKey, hour)? Aktivt mens timen ligger i
+// [startHour, startHour+varighed) samme dag — så «Tændt» slår selv fra efter varigheden.
+export function claimActiveAt(claim, dayKey, hour){
+  return claim.dato === dayKey && hour >= claim.startHour && hour < claim.startHour + claim.varighed;
+}
+
+// Slut-tidspunkt (klokketime, kan være halv) for et claim — til «Tændt · til X».
+export function claimEndHour(claim){
+  return Math.min(24, claim.startHour + claim.varighed);
+}
+
 // Bekræftet hvis forbruget i vinduet er forhøjet ift. dagens median OG timerne
 // overvejende lå i billig/middel tier.
 export function verifyClaim(claim, hourlyKwh, prices){
