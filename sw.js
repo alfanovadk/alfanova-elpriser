@@ -1,8 +1,10 @@
 // Service worker til Elpriser-PWA
-const CACHE = 'elpriser-v3';
+const CACHE = 'elpriser-v4';
 const SHELL = [
   'index.html',
   'pricing.js',
+  'gamify.js',
+  'eloverblik.js',
   'manifest.webmanifest',
   'icon-192.png',
   'icon-512.png',
