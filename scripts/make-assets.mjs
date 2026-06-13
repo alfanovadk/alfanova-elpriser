@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const assets = join(root, 'assets');
 const svg = readFileSync(join(assets, 'icon-source.svg'));
-const BG = '#EAF7EF';
+const BG = '#BFE6CC';
 
 // Ikon: 1024×1024 uigennemsigtigt
 await sharp(svg, { density: 384 }).resize(1024, 1024).flatten({ background: BG })
