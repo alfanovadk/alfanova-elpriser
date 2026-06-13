@@ -192,7 +192,7 @@ const app={
     customTariff:{ winter:{lav:11,hoej:33,spids:99}, summer:{lav:11,hoej:17,spids:43} },
     eloverblik:{ refreshToken:'', meteringPointId:'', accessToken:'', accessTokenExp:0 },
     wizardStep:0, wizardMsg:'', meteringPoints:[],
-    analyse:{ periodeType:'maaned', fromKey:null, toKey:null }, analyseTip:null, analyseLoading:false },
+    analyse:{ periodeType:'maaned', fromKey:null, toKey:null }, analyseMsg:null, analyseLoading:false },
   raw:[], loading:true, error:null
 };
 function currentTariff(){
@@ -211,7 +211,7 @@ function loadState(){
   app.state.tab='nu';
   app.state.showProfiles=false;
   app.state.analyse={ periodeType:'maaned', fromKey:null, toKey:null };
-  app.state.analyseTip=null;
+  app.state.analyseMsg=null;
   app.state.analyseLoading=false;
 }
 function saveState(){
@@ -438,14 +438,16 @@ async function loadAnalyseData(){
   const a=app.state.analyse;
   const range=periodRange(a.periodeType, a.fromKey, a.toKey);
   const agg=aggForType(a.periodeType);
-  app.state.analyseLoading=true; app.state.analyseTip=null; render();
+  app.state.analyseLoading=true; app.state.analyseMsg=null; render();
   // sidste år (samme interval, et år tilbage)
   const lastYear={ from:new Date(range.from.getFullYear()-1,range.from.getMonth(),range.from.getDate()),
                    to:new Date(range.to.getFullYear()-1,range.to.getMonth(),range.to.getDate()) };
   const e1=await fetchRange(range, agg);
   const e2=await fetchRange(lastYear, agg);   // YoY — fejler stille hvis ingen historik
   app.state.analyseLoading=false;
-  app.state.analyseTip = e1 || null;          // vis kun primær-periodens fejl
+  // Fejl er ikke-blokkerende: forbrugView render fra cache. Vis kun en diskret note
+  // hvis primær-periodens hentning fejlede (token udløbet, netværk, osv.).
+  app.state.analyseMsg = e1 ? 'Kunne ikke opdatere — tjek din Eloverblik-forbindelse.' : null;
   // hent dag-priser til tier-farvning når perioden er en enkelt dag (Hour)
   if(agg==='Hour' && !e1){ await ensureDayPrice(isoDate(range.from)); }
   render();
@@ -1054,12 +1056,22 @@ function forbrugView(){
       <div class="skel" style="padding:40px 0;">${voltSVG('charge',56,th.text)}<div style="margin-top:12px;">Henter dit forbrug…</div></div></div>`;
   }
 
+  // Render fra cachen uanset om en frisk hentning lykkedes. Kun når der INTET er i
+  // cachen for perioden viser vi en blokkerende empty-state.
   const hasData=rows.some(r=>r.kwh!=null);
-  if(app.state.analyseTip || !hasData){
-    const msg=app.state.analyseTip || 'Ingen forbrugsdata for denne periode endnu (data er typisk 1-2 dage forsinket).';
+  if(!hasData){
+    const failed=!!app.state.analyseMsg;
+    const msg=failed
+      ? 'Kunne ikke hente dit forbrug — tjek din Eloverblik-forbindelse.'
+      : 'Ingen forbrugsdata for denne periode endnu (data er typisk 1-2 dage forsinket).';
+    const retry=failed?`<button onclick="loadAnalyseData()" style="margin-top:14px;padding:11px 22px;border:none;border-radius:13px;background:${th.accent};color:${th.accentText};font:inherit;font-weight:800;font-size:13.5px;cursor:pointer;">Prøv igen</button>`:'';
     return `<div class="pane">${head}${picker}${nav}${a.periodeType==='custom'?custom:''}
-      <div style="background:${th.surface};border:1px solid ${th.border};border-radius:18px;padding:22px 18px;margin-top:18px;text-align:center;color:${th.muted};font-size:13.5px;line-height:1.5;">${esc(msg)}</div></div>`;
+      <div style="background:${th.surface};border:1px solid ${th.border};border-radius:18px;padding:22px 18px;margin-top:18px;text-align:center;color:${th.muted};font-size:13.5px;line-height:1.5;">${esc(msg)}${retry}</div></div>`;
   }
+  // Diskret note over grafen når seneste hentning fejlede men cache har data.
+  const staleNote=app.state.analyseMsg
+    ? `<div style="display:flex;align-items:center;gap:6px;margin-top:12px;font-size:11.5px;color:${th.muted};line-height:1.4;"><span>⚠️</span><span>${esc(app.state.analyseMsg)}</span></div>`
+    : '';
 
   // nøgletal — periodTotals over de udfyldte buckets (time/dag/måned)
   const hourArr=(agg==='Hour'?(loadConsumption()[keyOf(range.from)]||null):null);
@@ -1159,7 +1171,7 @@ function forbrugView(){
   const toggle=`<button onclick="toggleProfiles()" style="width:100%;margin-top:12px;padding:10px;border:1px solid ${th.border};background:${th.surface};color:${th.text};font:inherit;font-weight:700;font-size:13px;border-radius:13px;cursor:pointer;">${showMore?'Skjul detaljer ▲':'Sammenlign & profiler ▼'}</button>`;
   const more = showMore ? `${custom}${yoy}${profiles}${klima}${csvBtn}` : '';
   return `<div class="pane">${head}
-    ${picker}${nav}
+    ${picker}${nav}${staleNote}
     <div style="background:${th.surface};border:1px solid ${th.border};border-radius:20px;padding:14px 16px;margin-top:14px;">
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;">
         <span style="font-weight:800;font-size:14px;color:${th.text};">Forbrug</span>
@@ -1341,7 +1353,7 @@ window.wizardNext=wizardNext; window.testEloverblik=testEloverblik;
 window.pickMeteringPoint=pickMeteringPoint; window.disconnectEloverblik=disconnectEloverblik;
 window.doRefresh=doRefresh;window.load=load;
 window.setTab=setTab;window.toggleProfiles=toggleProfiles;
-window.setPeriode=setPeriode;window.navPeriode=navPeriode;
+window.setPeriode=setPeriode;window.navPeriode=navPeriode;window.loadAnalyseData=loadAnalyseData;
 window.setCustomFrom=setCustomFrom;window.setCustomTo=setCustomTo;
 window.exportForbrugCSV=exportForbrugCSV;
 
