@@ -4,7 +4,7 @@ import {
   aggregateByDay, aggregateByMonth, dayProfile, weekdayProfile,
   periodTotals, pctChange, tierSplit, toCSV, weekdayOf, monthKeyOf,
   co2Footprint, avgIntensity, co2FootprintDaily,
-} from './forbrug-analyse.js';
+} from '../src/app/forbrug-analyse.js';
 
 test('aggregateByDay: summerer time-arrays pr. dag', () => {
   const hourly = {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { verifyClaim, pointsFor, smartScore, badgeUpdates, claimActiveAt, claimEndHour } from './gamify.js';
+import { verifyClaim, pointsFor, smartScore, badgeUpdates, claimActiveAt, claimEndHour } from '../src/app/gamify.js';
 
 const flat = v => Array(24).fill(v);
 

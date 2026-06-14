@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCO2, co2Url, dailyAvgCO2 } from './co2.js';
+import { parseCO2, co2Url, dailyAvgCO2 } from '../src/app/co2.js';
 
 test('co2Url: bygger dataset-URL med filter + lokal-tid-grænser', () => {
   const u = co2Url('DK1', '2026-06-13', '2026-06-14');

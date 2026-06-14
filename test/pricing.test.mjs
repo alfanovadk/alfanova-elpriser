@@ -4,7 +4,7 @@ import {
   season, nettarif, DSO_TARIFFS, parseDK,
   componentsOf, totalOf, ELAFGIFT, ENERGINET, MOMS,
   tierOf, loHi, bestWindow, seriesForDay, tierClass,
-} from './pricing.js';
+} from '../src/app/pricing.js';
 
 test('season: oktober-marts er vinter, april-september er sommer', () => {
   assert.equal(season(0), 'winter');

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTimeSeries, parseBuckets } from './eloverblik.js';
+import { parseTimeSeries, parseBuckets } from '../src/app/eloverblik.js';
 
 const FIXTURE = { result: [ { MyEnergyData_MarketDocument: { TimeSeries: [ { Period: [ {
   timeInterval: { start: '2026-06-12T22:00:00Z', end: '2026-06-13T22:00:00Z' },

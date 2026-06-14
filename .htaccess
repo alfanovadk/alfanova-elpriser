@@ -1,0 +1,9 @@
+# Statisk PWA på GreenGeeks. Subdomænet ligger inde i public_html og ARVER ellers
+# WordPress-LiteSpeed-cache-reglerne fra parent public_html/.htaccess — hvilket serverer
+# en stale index.html efter hver deploy (filen opdateres på disk, men LSCache leverer gammelt).
+# Derfor: deaktivér LiteSpeed-cache helt for dette subdomæne.
+<IfModule LiteSpeed>
+CacheDisable public /
+RewriteEngine On
+RewriteRule .* - [E=Cache-Control:no-cache]
+</IfModule>

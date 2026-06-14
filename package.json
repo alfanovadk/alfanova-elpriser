@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test",
+    "test": "node --test 'test/**/*.test.mjs' 'scripts/**/*.test.mjs'",
     "dev": "eleventy --serve",
     "build": "eleventy",
     "clean": "rm -rf _site",
