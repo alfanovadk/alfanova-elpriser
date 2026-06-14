@@ -1,32 +1,38 @@
-# alfanova-elpriser
+# alfanova-elpriser (i-stødet.dk)
 
-Lille statisk PWA der viser danske elpriser (i dag + i morgen) med totalpris pr.
-netselskab, anbefalede tidsvinduer for apparater, klik-på-time pris-nedbrydning,
-animeret Volt-maskot, og — via Eloverblik — verificeret gamification (point/badges
-for at flytte forbrug til billige timer).
+11ty content-site for **i-stødet.dk** med besparelses-guides + en client-side PWA
+(danske elpriser i dag/i morgen, totalpris pr. netselskab, anbefalede tidsvinduer,
+pris-nedbrydning, animeret maskot, og via Eloverblik verificeret gamification).
+PWA'en serveres uændret under `/app/`. Repoet er også en Capacitor-iOS-app.
 
 ## Arkitektur
 
-Ren client-side, ingen backend. ESM-moduler, ingen build-step.
+11ty 3.x (CommonJS-config, da repoet er `type:module`) bygger marketing-siderne.
+PWA'en er ren client-side, ingen build-step, og passthrough-kopieres uændret.
 
-| Fil | Rolle |
+| Sti | Rolle |
 |-----|-------|
-| `index.html` | App-skal: UI, temaer (soft/bold/play), DOM-render, actions, Volt-maskot, settings/wizard |
-| `pricing.js` | Ren pris-motor: afgifter, netselskab-tariffer, serier, komponent-nedbrydning |
-| `gamify.js` | Ren gamification-logik: verificér claims, point, smart-score, badges |
-| `eloverblik.js` | Eloverblik CustomerApi-klient (CORS-verificeret, ingen proxy) + timeseries-parser |
-| `sw.js` | Service worker (network-first app-skal-cache) |
+| `eleventy.config.cjs` | 11ty-config: media-plugin, `assetUrl`/`assetVersion`-filtre, passthrough af `src/assets` + `src/app` |
+| `src/index.njk`, `src/spar*.njk`, `src/om.njk`, `src/saadan-beregner-vi.njk` | Marketing-sider (alfanova-voice) |
+| `src/_data/site.js` | Site-metadata + nav. `src/_data/apparater.js` | Besparelses-datamodel (kWh × pris-spænd), single source for guides + tabel |
+| `src/_includes/layouts/{base,guide}.njk` | Layouts |
+| `src/app/` | **PWA, uændret** (`index.html`, `pricing.js`, `gamify.js`, `eloverblik.js`, `forbrug-analyse.js`, `co2.js`, `sw.js`, manifest, ikoner). Serveres på `/app/`. ESM-moduler, relative stier → SW-scope `/app/` |
+| `scripts/build-www.mjs` | Capacitor: kopierer `src/app/` (via `runtime-files.mjs`) → `www/` (iOS webDir) |
+| `scripts/deploy-caddy.sh`, `deploy/caddy-i-stoedet.dk.caddy` | Caddy-blok-deploy til websites |
+| `scripts/verify-live.mjs` | Post-deploy dev-browser-tjek |
 
-Designs + planer: `docs/superpowers/`.
+`src/app/` er fælles kilde for BÅDE web (11ty-passthrough → `_site/app/`) OG iOS
+(`npm run cap:assets` → `www/`). Designs + planer: `docs/superpowers/`.
 
 ## Test
 
 ```
-node --test
+npm test          # node --test 'test/**/*.test.mjs' 'scripts/**/*.test.mjs'
 ```
 
-Rene moduler (`pricing.js`, `gamify.js`, `eloverblik.js`) er unit-testede med Node's
-indbyggede runner (ingen deps).
+De rene moduler (`pricing/gamify/eloverblik/co2/forbrug-analyse`) testes fra `test/`
+(imports `../src/app/X.js`). `apparater.js` testes også. Test-filer ligger i `test/`
+(IKKE i `src/app/`) så de ikke passthrough-kopieres til web.
 
 ## Vigtige data-noter
 
@@ -38,50 +44,48 @@ indbyggede runner (ingen deps).
 
 ## Deploy
 
-Statisk site på **GreenGeeks** (shared hosting). Deploy = rsync af statiske filer.
+Hostes på Hetzner **websites**-serveren (Caddy), proxied bag Cloudflare.
+GreenGeeks er udfaset (se nedenfor). Deploy = npm-scripts (alfanova-style).
 
-- **SSH:** bruger `alfanova`, origin-IP `107.6.136.42` (domænet er Cloudflare-proxied,
-  så brug origin-IP til SSH/rsync — ikke DNS-opslaget).
-- **Sti:** `public_html/i-stoedet.alfanova.dk/` (subdomæne på samme GreenGeeks-konto;
-  apex `alfanova.dk` bor IKKE her — det er på ug-sites/Caddy. Gammelt domæne
-  `elpriser.damsgaard-bruhn.dk/` er udfaset.)
-- **Filer der skal med:** `index.html`, `pricing.js`, `gamify.js`, `eloverblik.js`,
-  `forbrug-analyse.js`, `co2.js`, `sw.js`, `manifest.webmanifest`, `icon-192.png`,
-  `icon-512.png`, `apple-touch-icon.png`, `favicon.ico`, `robots.txt`
-  (IKKE `docs/`, `node_modules/`, `package.json`, `*.test.mjs`, `.git`).
-  **NB:** `forbrug-analyse.js` + `co2.js` er importerede moduler — glemmer du dem,
-  hænger appen i "Henter elpriser…".
+- **Server:** `websites` — Tailscale `100.64.0.4` (`ssh root@websites`), public
+  `46.225.103.197`. SSH ALTID via Tailscale (Hetzner-firewall låser public-origin
+  til Cloudflares IP'er — direkte curl til public-IP fra egen maskine fejler, det
+  er meningen; verificér origin via `--resolve <domæne>:443:100.64.0.4 -k`).
+- **Docroot:** `/var/www/xn--i-stdet-t1a.dk/current/` (punycode for i-stødet.dk).
+- **TLS:** CF Origin-cert (Full Strict), 1Password "CF Origin Cert — i-stødet.dk"
+  (udstillerguide-v3) → `/etc/caddy/certs/xn--i-stdet-t1a.dk/origin.{crt,key}`.
+- **CF-zone:** `ea83cb8b7df67afc0e7e0edda4db904a` (alfanova-konto, IKKE UG-kontoen).
+  Browser Cache TTL sat til "Respect Existing Headers" (0) så origin-headers gælder.
 
 ```
-rsync -avz \
-  index.html pricing.js gamify.js eloverblik.js forbrug-analyse.js co2.js sw.js \
-  manifest.webmanifest icon-192.png icon-512.png apple-touch-icon.png favicon.ico robots.txt \
-  alfanova@107.6.136.42:public_html/i-stoedet.alfanova.dk/
+npm run deploy        # build → rsync _site/ → websites → purge CF → verify:live
+npm run deploy:caddy  # lægger cert + Caddy-blok på websites + ugctl caddy reload
 ```
 
-### Cloudflare cacher .js i 1 år — HARD RULE ved JS-ændringer
+`npm run deploy` kæder `verify:live` (dev-browser) — derfor passerer deploy-verify-hooken
+rsync'en til `/var/www/`. Caddy-blokken er versionsstyret i `deploy/caddy-i-stoedet.dk.caddy`.
 
-Serveren sætter `cache-control: public, max-age=31536000` på `.js`, og Cloudflare
-cacher dem (`cf-cache-status: HIT`). **`index.html` caches IKKE** (frisk ved hver load),
-men en opdateret `.js` serveres STALE i op til et år. Symptom: frisk `index.html`
-importerer en gammel cachet `.js` → `does not provide an export named …` → appen
-hænger i "Henter elpriser…".
+### Cache (afløser den gamle GreenGeeks-.js-regel)
 
-**Reglen:** Når du ændrer en `.js`-modulfil, SKAL du cache-buste importen.
-Modul-importerne i `index.html` har en `?v=N`-query (pricing/eloverblik/gamify/
-forbrug-analyse/co2). **Bump N i ALLE fem imports ved enhver `.js`-ændring** før deploy —
-da `index.html` er frisk, henter den nye `?v=N`-URL en frisk fil fra origin (CF-MISS).
-
-Alternativ/supplement: purge Cloudflare-cachen. Token: 1Password "Cloudflare API Token
-- UG3" i vault **udstillerguide-v3** (verificeret dækker `alfanova.dk`-zonen,
-zone-id `c3b2ce74fdc6b37a121e98267bf4fba9`). Write-ops udløser CF-godkendelses-hook.
+Caddy sætter cache-headers (sw.js/manifest `max-age=0`, app-moduler 3600, marketing-assets
+86400, HTML 300). CF respekterer dem (Browser Cache TTL=0), og `npm run deploy` purger
+CF-edge efter rsync. Appens egne modul-imports i `src/app/index.html` har stadig en
+`?v=N`-query — bump N ved modul-ændringer som ekstra sikkerhed. Marketing-assets
+cache-bustes automatisk via `?v={{ ... | assetVersion }}` (per-fil content-hash).
 
 **HARD RULE — verificér live efter deploy** (jf. global CLAUDE.md): åbn
-`https://i-stoedet.alfanova.dk` i en FRISK browser med cache-bust (`?cb=<ts>`),
-bekræft at appen loader (ikke hænger i "Henter elpriser…"), tjek console for
-import-fejl, inspicér visuelt desktop + 390px. Tag screenshot OG læs det.
+`https://i-stødet.dk` i en FRISK browser med cache-bust, bekræft at forsiden +
+guides loader og at `/app/` ikke hænger i "Henter elpriser…", tjek console,
+inspicér visuelt desktop + 390px. Tag screenshot OG læs det. (`npm run verify:live`
+gør HTTP+app-boot-delen automatisk via dev-browser.)
 
-Credentials (SSH-nøgle/password, Eloverblik-token) ligger IKKE her — de hører i
+### GreenGeeks (udfaset — ryd op når i-stødet.dk er stabil)
+
+Gammel PWA lå på GreenGeeks (`alfanova@107.6.136.42:public_html/i-stoedet.alfanova.dk/`).
+Skal slettes manuelt i cPanel: addon-domæne `xn--i-stdet-t1a.dk`, subdomæne
+`i-stoedet.alfanova.dk`, og docroot/symlink `public_html/xn--i-stdet-t1a.dk`.
+
+Credentials (Eloverblik-token m.m.) ligger IKKE her — de hører i
 `~/.claude/CLAUDE.local.md` (gitignored) eller gives ad hoc.
 
 ## Sprog
