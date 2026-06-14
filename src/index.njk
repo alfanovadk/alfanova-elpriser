@@ -1,8 +1,64 @@
 ---
 layout: layouts/base.njk
 title: I stødet
-pageTitle: I stødet — elpriser og besparelse
-description: Se hvornår strømmen er billig, og spar på det du alligevel bruger.
+pageTitle: I stødet — se hvornår strømmen er billig
+description: Se de danske elpriser i dag og i morgen, og spar på elbil, opvask, vask og varme ved at flytte forbruget til de billige timer.
+permalink: /
 ---
-<h1>{{ site.tagline }}</h1>
-<p><a href="{{ site.appPath }}">Åbn app</a></p>
+
+{# ── Hero ── #}
+<section class="hero">
+  <h1>{{ site.tagline }}</h1>
+  <p class="lead">Du behøver ikke lave om på hvad du bruger. Du skal bare vide, hvornår det er billigst.</p>
+  <a href="{{ site.appPath }}" class="btn">Åbn app</a>
+</section>
+
+{# ── How it works ── #}
+<section class="section">
+  <div class="container">
+    <h2 class="section__title">Sådan virker det</h2>
+    <div class="steps">
+      <div class="step">
+        <span class="step__num">1</span>
+        <h3>Se priserne</h3>
+        <p>Appen viser timepriserne i dag og i morgen. Du kan se hvornår strømmen er billig, og hvornår den er dyr.</p>
+      </div>
+      <div class="step">
+        <span class="step__num">2</span>
+        <h3>Flyt forbruget</h3>
+        <p>Elbil, opvaskemaskine og vaskemaskine kan nemt sættes til at starte sent om natten. Det kræver ikke mere end én opsætning.</p>
+      </div>
+      <div class="step">
+        <span class="step__num">3</span>
+        <h3>Se din besparelse</h3>
+        <p>Forbind dit Eloverblik-login, og appen kan beregne hvad du faktisk har sparet ved at flytte forbruget.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ── Featured guides ── #}
+<section class="section">
+  <div class="container">
+    <h2 class="section__title">Hvad kan du reelt spare?</h2>
+    <p>Tallene nedenfor er typiske gennemsnit. Gevinsten afhænger af, hvor stor prisforskellen er den dag.</p>
+    <div class="card-grid">
+      {%- for a in apparater.liste %}
+      <a class="card" href="/spar/{{ a.slug }}/">
+        <h3>{{ a.navn }}</h3>
+        <div class="savings-amount">{{ apparater.besparelse(a, 'typisk') | kr }} kr</div>
+        <p class="muted">{{ a.enhed }}</p>
+        <p>{{ a.resume }}</p>
+      </a>
+      {%- endfor %}
+    </div>
+    <p class="cta"><a class="nav-cta" href="/spar/">Se alle besparelser →</a></p>
+  </div>
+</section>
+
+{# ── Maker note ── #}
+<section class="section">
+  <div class="container">
+    <p class="muted">I stødet er et gratis værktøj fra <a href="{{ site.makerUrl }}">alfanova</a>. Læs mere på <a href="/om/">Om siden</a>.</p>
+  </div>
+</section>
