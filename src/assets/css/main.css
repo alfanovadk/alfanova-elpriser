@@ -1,0 +1,4 @@
+:root { color-scheme: light; }
+body { font-family: system-ui, sans-serif; margin: 0; }
+.skip-link { position: absolute; left: -9999px; }
+.skip-link:focus { left: 8px; top: 8px; }

@@ -5,6 +5,12 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
+    "dev": "eleventy --serve",
+    "build": "eleventy",
+    "clean": "rm -rf _site",
+    "deploy": "npm run build && rsync -avz --delete _site/ root@websites:/var/www/xn--i-stdet-t1a.dk/current/ && npm run verify:live",
+    "deploy:caddy": "bash scripts/deploy-caddy.sh",
+    "verify:live": "node scripts/verify-live.js",
     "cap:assets": "node scripts/build-www.mjs",
     "cap:icons": "node scripts/make-assets.mjs && npx @capacitor/assets generate --ios",
     "cap:sync": "npm run cap:assets && npx cap sync ios",
@@ -19,6 +25,9 @@
     "@capacitor/status-bar": "^8.0.2"
   },
   "devDependencies": {
+    "@11ty/eleventy": "^3.0.0",
+    "@11ty/eleventy-img": "^6.0.4",
+    "@udstillerguide/11ty-media": "file:../../ug-11ty-plugins/packages/media",
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.4.0",
     "@capacitor/ios": "^8.4.0",

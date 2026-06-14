@@ -3,6 +3,9 @@ elpriser-pwa.zip
 .DS_Store
 node_modules
 
+# 11ty build output
+_site/
+
 # Capacitor
 www/
 ios/App/Pods/

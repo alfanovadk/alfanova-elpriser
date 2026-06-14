@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ pageTitle or (title + " · " + site.name) }}</title>
+<meta name="description" content="{{ description }}">
+{%- if robots %}<meta name="robots" content="{{ robots }}">{%- endif %}
+<link rel="canonical" href="{{ site.url }}{{ page.url }}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="{{ pageTitle or (title + ' · ' + site.name) }}">
+<meta property="og:description" content="{{ description }}">
+<meta property="og:locale" content="da_DK">
+<meta property="og:site_name" content="{{ site.name }}">
+<link rel="stylesheet" href="{{ '/assets/css/main.css' | assetUrl }}?v={{ '/assets/css/main.css' | assetVersion }}">
+</head>
+<body class="{{ bodyClass | default('') }}">
+<a class="skip-link" href="#main">Spring til hovedindhold</a>
+<main id="main">
+{{ content | safe }}
+</main>
+</body>
+</html>
