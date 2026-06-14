@@ -25,7 +25,7 @@ const liste = [
   {
     slug: "varmepumpe", navn: "Varmepumpe & varmt vand", enhed: "pr. dag",
     kwh: 15, kanFlyttes: false, frekvensOmAaret: 365,
-    resume: "Stort årsforbrug = stort potentiale — MEN kun hvis systemet kan tidsstyres uden at gå på kompromis med komfort eller legionella-sikkerhed.",
+    resume: "Stort årsforbrug giver stort potentiale, men kun hvis systemet kan tidsstyres uden at gå på kompromis med komfort eller legionella-sikkerhed.",
     forudsaetning: "Mange varmepumper/varmtvandsbeholdere kan IKKE tidsstyres uden videre. Tjek om din kan, før du regner med besparelsen.",
   },
 ];
