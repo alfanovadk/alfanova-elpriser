@@ -7,7 +7,9 @@ node_modules
 www/
 ios/App/Pods/
 ios/App/App/public/
-ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+# SPM-cache ignoreres, MEN Package.resolved SKAL committes (Xcode Cloud kræver den).
+ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/*
+!ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 DerivedData/
 
 # Beads / Dolt files (added by bd init)
