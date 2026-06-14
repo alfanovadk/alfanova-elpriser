@@ -3,7 +3,7 @@ export default {
   name: "I stødet",
   url: "https://i-stødet.dk",
   punycodeUrl: "https://xn--i-stdet-t1a.dk",
-  tagline: "Se hvornår strømmen er billig — og spar på det du alligevel bruger",
+  tagline: "Se hvornår strømmen er billig, og spar på det du alligevel bruger",
   maker: "alfanova",
   makerUrl: "https://alfanova.dk",
   appPath: "/app/",
