@@ -12,8 +12,9 @@ brew install node
 # Repo-roden (hvor package.json + ios/ ligger).
 cd "$CI_PRIMARY_REPOSITORY_PATH"
 
-# Xcode Clouds sandbox kan have transiente DNS-glitches mod registry.npmjs.org (ENOTFOUND).
-# Konfigurér rundhåndede retries og forsøg npm ci flere gange med pause imellem.
+# Xcode Clouds netværks-stak kvæles af npm's mange parallelle forbindelser → ENOTFOUND/connection-fejl.
+# Det kendte fix: begræns concurrency til 3 sockets. Plus rundhåndede retries som sikkerhedsnet.
+npm config set maxsockets 3
 npm config set fetch-retries 6
 npm config set fetch-retry-mintimeout 15000
 npm config set fetch-retry-maxtimeout 120000
