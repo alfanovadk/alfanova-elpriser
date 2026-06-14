@@ -1,0 +1,20 @@
+---
+layout: layouts/base.njk
+---
+{%- set a = apparater.bySlug(apparat) %}
+<article class="guide">
+  <h1>{{ h1 }}</h1>
+  <p class="lead">{{ a.resume }}</p>
+  <aside class="savings-box">
+    <p>Typisk besparelse: <strong>{{ apparater.besparelse(a, 'typisk') | kr }} kr</strong> {{ a.enhed }}
+    {%- if a.frekvensOmAaret %} · ca. <strong>{{ apparater.besparelseOmAaret(a, 'typisk') | kr0 }} kr/år</strong>{% endif %}.</p>
+    <p class="muted">Spændvidde: {{ apparater.besparelse(a, 'lav') | kr }}–{{ apparater.besparelse(a, 'hoej') | kr }} kr {{ a.enhed }} (afhænger af dagens prisforskel).</p>
+  </aside>
+  {%- if not a.kanFlyttes %}
+  <p class="caveat"><strong>Kun hvis du kan flytte forbruget:</strong> {{ a.forudsaetning }}</p>
+  {%- else %}
+  <p class="muted">Forudsætning: {{ a.forudsaetning }}</p>
+  {%- endif %}
+  {{ content | safe }}
+  <p class="cta"><a class="nav-cta" href="{{ site.appPath }}">Se din egen besparelse i appen →</a></p>
+</article>

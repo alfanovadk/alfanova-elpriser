@@ -1,0 +1,35 @@
+---
+layout: layouts/base.njk
+title: Sådan sparer du
+pageTitle: Sådan sparer du på elregningen — I stødet
+description: Typisk besparelse pr. apparat ved at flytte forbrug til de billige timer.
+permalink: /spar/
+---
+<div class="guide">
+  <h1>Hvad kan du reelt spare?</h1>
+  <p class="lead">Du behøver ikke lave om på hvad du bruger. Du skal bare flytte det til de rigtige timer.</p>
+  <p>Strøm koster ikke det samme hele dagen. Forskellen mellem den billigste og dyreste time på en almindelig hverdag er typisk 1–2 kr/kWh. Den forskel kan du bruge, hvis du sætter dine apparater til at starte natten over frem for i myldretiden.</p>
+  <p>Tabellen nedenfor viser, hvad det typisk er værd pr. apparat. Tallene er ærlige gennemsnit. Nogle dage er prisforskellen større, andre dage er den lille.</p>
+  <table class="savings-table">
+    <thead>
+      <tr>
+        <th>Apparat</th>
+        <th>Typisk besparelse</th>
+        <th>Pr. år</th>
+        <th>Kan flyttes?</th>
+      </tr>
+    </thead>
+    <tbody>
+    {%- for a in apparater.liste %}
+      <tr>
+        <td><a href="/spar/{{ a.slug }}/">{{ a.navn }}</a></td>
+        <td>{{ apparater.besparelse(a, 'typisk') | kr }} kr {{ a.enhed }}</td>
+        <td>~{{ apparater.besparelseOmAaret(a, 'typisk') | kr0 }} kr</td>
+        <td>{% if a.kanFlyttes %}Ja, nemt{% else %}Kun hvis systemet kan tidsstyres{% endif %}</td>
+      </tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+  <p class="muted">Besparelserne er beregnet med en typisk dansk prisforskel på {{ apparater.prisspaend.typisk | kr }} kr/kWh. Spændvidde: {{ apparater.prisspaend.lav | kr }}–{{ apparater.prisspaend.hoej | kr }} kr/kWh afhængigt af dagen.</p>
+  <p class="cta"><a class="nav-cta" href="{{ site.appPath }}">Se hvornår strømmen er billigst i dag →</a></p>
+</div>
